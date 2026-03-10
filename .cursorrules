@@ -1,0 +1,56 @@
+# Duo Viewer — Cursor Rules
+
+## Что это за проект
+React + Vite приложение для совместного просмотра лендинга двумя пользователями в реальном времени.
+Открывается как Telegram Mini App. Весь код в одном файле: `src/App.jsx`.
+
+## Стек
+- React 18 + Vite
+- Gun.js (real-time P2P storage, без сервера)
+- Telegram Mini App SDK
+- GitHub Pages (хостинг)
+- Чистый CSS внутри JS (константа CSS в App.jsx)
+
+## Архитектура App.jsx
+Один большой файл, структура сверху вниз:
+
+1. **STORAGE** — Gun.js функции (saveState, loadState, savePresence, etc.)
+2. **CONSTANTS** — SECTIONS, COLORS, PRICES, REACTS, DRAW_COLORS, VIBE_PATTERNS
+3. **AmbientPlayer** — Web Audio API класс для фоновой музыки
+4. **CSS** — вся стилизация в строке (inject в <head>)
+5. **ATOMS** — маленькие компоненты: Petals, BurstHearts, Phone, BatRing, FloatReact, MusicBars, SurpriseOverlay, TogetherTimer
+6. **VibePanel / VibeRipple** — компоненты вибрации
+7. **VoicePlayer** — плеер голосовых сообщений
+8. **KissOverlay** — таймер поцелуя
+9. **PlaylistPanel** — совместный плейлист
+10. **Landing** — главный компонент (лендинг + все фичи)
+11. **useTelegram()** — хук для Telegram Mini App
+12. **App** — корневой компонент (фазы: connect → waiting → burst → landing)
+
+## Фичи (ribbon кнопки слева направо)
+🎵 Ambient музыка | 🎶 Плейлист | 📸 Захват момента | 📳 Вибрация | 🎯 Реакции | 💋 Таймер поцелуя | 💬 Чат (+ голосовые) | 🔄 Синхро-скролл
+
+## Синхронизация между пользователями
+Ключи в Gun.js:
+- `duo:{username}` — presence (кто с кем хочет соединиться)
+- `duo_state:{username}` — live state (scroll, cursor, reaction, msg, colorId, kissing, vibe)
+- `duo_playlist:{username}` — треки плейлиста
+
+## Что нужно заполнить перед запуском
+1. `.env.local` → `VITE_BOT_USERNAME=имя_бота` и `VITE_BASE_PATH=/имя-репо/`
+2. GitHub Secrets → `VITE_BOT_USERNAME`
+
+## Команды
+```bash
+npm install      # установить зависимости
+npm run dev      # локальная разработка → http://localhost:5173
+npm run build    # сборка в dist/
+git push         # автодеплой на GitHub Pages через Actions
+```
+
+## Важные детали
+- `window.storage` НЕ используется — заменён на Gun.js
+- Gun relay: `https://gun-manhattan.herokuapp.com/gun`
+- Вся CSS инжектируется в `<head>` через useEffect в App()
+- Telegram username берётся из `window.Telegram.WebApp.initDataUnsafe.user`
+- Deep link: `t.me/БОТ?startapp=USERNAME` → автозаполняет ник партнёра
