@@ -1,33 +1,37 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 /* ══════════════════════════════════════════════════════
-   STORAGE — Gun.js (decentralized, no server, no signup)
-   Docs: https://gun.eco
+   STORAGE — Supabase
 ══════════════════════════════════════════════════════ */
+const SUPABASE_URL = 'https://zghswvujqwshonctoulx.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_uLz5P6pKZ_r7aru5HmvMbw_MWoxAM_t';
 const POLL_MS = 900;
 const TTL_MS  = 15 * 60 * 1000;
 const normalize = s => s.replace(/^@/, "").toLowerCase().trim();
 
-// Gun.js loaded via CDN in index.html
-// Namespace all keys under "duo_app" to avoid collisions
-const getGun  = () => window._duoGun  || (window._duoGun  = window.Gun(['https://gun-manhattan.herokuapp.com/gun']));
-const getNode = (k) => getGun().get('duo_app').get(k);
+const supaFetch = async (key, value = undefined) => {
+  const base = `${SUPABASE_URL}/rest/v1/duo_store`;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'resolution=merge-duplicates,return=minimal',
+  };
+  if (value === undefined) {
+    const r = await fetch(`${base}?key=eq.${key}&select=value`, { headers });
+    const d = await r.json();
+    return d?.[0]?.value ?? null;
+  }
+  if (value === null) {
+    await fetch(`${base}?key=eq.${key}`, { method: 'DELETE', headers });
+    return;
+  }
+  await fetch(base, { method: 'POST', headers, body: JSON.stringify({ key, value: JSON.stringify(value) }) });
+};
 
-async function s_set(k, v) {
-  return new Promise(res => getNode(k).put(JSON.stringify(v), () => res()));
-}
-async function s_get(k) {
-  return new Promise(res => {
-    getNode(k).once(data => {
-      try { res(data ? JSON.parse(data) : null); } catch { res(null); }
-    });
-    // timeout fallback
-    setTimeout(() => res(null), 3000);
-  });
-}
-async function s_del(k) {
-  return new Promise(res => getNode(k).put(null, () => res()));
-}
+async function s_set(k, v) { await supaFetch(k, v); }
+async function s_get(k) { try { const r = await supaFetch(k); return r ? JSON.parse(r) : null; } catch { return null; } }
+async function s_del(k) { await supaFetch(k, null); }
 
 async function savePresence(me, to)  { await s_set(`duo:${normalize(me)}`, { wants: normalize(to), ts: Date.now() }); }
 async function loadPresence(n)       { const d = await s_get(`duo:${normalize(n)}`); return d && Date.now()-d.ts < TTL_MS ? d : null; }
