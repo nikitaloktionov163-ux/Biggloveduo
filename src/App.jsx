@@ -382,6 +382,10 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .empty{padding:28px 0;text-align:center;font-size:12px;font-weight:300;color:var(--ink3);grid-column:1/-1;line-height:1.7;}
 
 /* footer */
+.swipe-dots{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
+@media(max-width:560px){.swipe-dots{display:flex;}}
+.swipe-dot{width:5px;height:5px;border-radius:50%;background:rgba(243,239,244,.18);transition:all .3s var(--e1);flex-shrink:0;}
+.swipe-dot.on{background:var(--r);width:14px;border-radius:3px;box-shadow:0 0 6px rgba(193,66,104,.5);}
 .foot{border-top:1px solid rgba(255,255,255,.04);padding:24px clamp(20px,5vw,56px);text-align:center;}
 .foot-t{font-size:10px;font-weight:300;color:rgba(255,255,255,.1);line-height:1.7;}
 `;
@@ -401,6 +405,7 @@ function LoveTimer({start}){const[d,sd]=useState({});useEffect(()=>{const calc=(
 const b64Blob=(b64,t)=>{const bin=atob(b64);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:t});};
 function VoicePlayer({data,dur}){const[p,sp]=useState(false);const ar=useRef(null);useEffect(()=>{if(!data)return;const url=URL.createObjectURL(b64Blob(data,"audio/webm"));const a=new Audio(url);a.onended=()=>sp(false);ar.current=a;return()=>{a.pause();URL.revokeObjectURL(url);};},[data]);const toggle=()=>{const a=ar.current;if(!a)return;if(p){a.pause();a.currentTime=0;sp(false);}else{a.play();sp(true);}};const bars=Array.from({length:14},()=>Math.max(4,Math.sin(Math.random()*3)*9+Math.random()*5+4));return <div className="vp"><button className="vp-btn" onClick={toggle}>{p?<svg width="8" height="8"><rect x="1" y="1" width="2.5" height="6" rx="1" fill="white"/><rect x="4.5" y="1" width="2.5" height="6" rx="1" fill="white"/></svg>:<svg width="8" height="8"><path d="M1.5 1l5.5 3-5.5 3V1z" fill="white"/></svg>}</button><div className="vp-bars">{bars.map((h,i)=><div key={i} className="vp-bar" style={{height:p?`${h}px`:"3px"}}/>)}</div><span className="vp-dur">0:{String(Math.round(dur||0)).padStart(2,"0")}</span></div>;}
 function daysUntil(ds){const now=new Date();now.setHours(0,0,0,0);const d=new Date(ds);const nx=new Date(now.getFullYear(),d.getMonth(),d.getDate());if(nx<now)nx.setFullYear(now.getFullYear()+1);return Math.round((nx-now)/86400000);}
+function useSwipe(onLeft,onRight,threshold=58){const st=useRef(null);const onTouchStart=e=>{st.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};const onTouchEnd=e=>{if(!st.current)return;const dx=e.changedTouches[0].clientX-st.current.x;const dy=e.changedTouches[0].clientY-st.current.y;st.current=null;if(Math.abs(dy)>Math.abs(dx)*1.1||Math.abs(dx)<threshold)return;dx<0?onLeft():onRight();};return{onTouchStart,onTouchEnd};}
 
 /* ─── SECTIONS ─── */
 const CAL_EM=["💍","🌹","🎂","✈️","🏠","💑","🎁","⭐","🥂","🌙","🎭","🌺"];
@@ -558,6 +563,12 @@ function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
   useEffect(()=>{if(chat)sUnread(0);},[chat]);
 
   const scrollTo=id=>sRefs.current[id]?.scrollIntoView({behavior:"smooth"});
+  const SWIPE_ORDER=["hero","timer","calendar","moments","dreams","wishes","travel","promises"];
+  const swipeIdx=SWIPE_ORDER.indexOf(active);
+  const swipe=useSwipe(
+    ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
+    ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv);}
+  );
   const sendReact=async em=>{sReacts(false);const x=35+Math.random()*30,y=25+Math.random()*44;const id=++rid.current;sF(p=>[...p,{id,emoji:em,x:`${x}%`,y:`${y}%`}]);const s=await loadSt(me)||{};await saveSt(me,{...s,reaction:{emoji:em,x,y,ts:Date.now()}});};
   const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();sMsgs(p=>[...p,{text,from:me,ts,vd,vdur}]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{text,ts,vd,vdur}});};
   const startRec=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mr=new MediaRecorder(stream,{mimeType:"audio/webm"});chunks.current=[];mr.ondataavailable=e=>chunks.current.push(e.data);mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,{type:"audio/webm"});if(blob.size>10){const dur=(Date.now()-recSt.current)/1000;const reader=new FileReader();reader.onloadend=async()=>{await sendMsg("🎤 Голосовое",reader.result.split(",")[1],dur);};reader.readAsDataURL(blob);}sRec(false);};mr.start();mrRef.current=mr;recSt.current=Date.now();sRec(true);setTimeout(()=>{if(mr.state==="recording")mr.stop();},30000);}catch(e){}};
@@ -573,7 +584,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
   const milestones=[{n:7,l:"7 дней"},{n:30,l:"1 месяц"},{n:100,l:"100 дней"},{n:180,l:"полгода"},{n:365,l:"1 год"},{n:730,l:"2 года"},{n:1000,l:"1000 дней"},{n:1825,l:"5 лет"}];
 
   return(
-    <div ref={scroll} className="app">
+    <div ref={scroll} className="app" {...swipe}>
       <Timer t0={connectedAt}/>
       <nav className={`nav ${stuck?"stuck":""}`}>
         <span className="nav-logo">💕 {n(me)} & {n(partner)}</span>
@@ -623,6 +634,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}</div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
+      <div className="swipe-dots">{["hero","timer","calendar","moments","dreams","wishes","travel","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         <div className="rib-text">С <b>@{n(partner)}</b></div>
