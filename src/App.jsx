@@ -5,6 +5,7 @@ const SB_URL = 'https://zghswvujqwshonctoulx.supabase.co';
 const SB_KEY = 'sb_publishable_uLz5P6pKZ_r7aru5HmvMbw_MWoxAM_t';
 const TTL = 15 * 60 * 1000;
 const n = s => (s||"").replace(/^@/,"").toLowerCase().trim();
+const norm = n;
 const pair = (a,b) => [n(a),n(b)].sort().join("·");
 
 const sb = async (key, val) => {
@@ -1026,7 +1027,7 @@ function KissBox({start}){const[e,se]=useState(0);useEffect(()=>{if(!start)retur
 function VibeRipple({vid,partner,onDone}){const p=VIBES.find(x=>x.id===vid)||VIBES[0];useEffect(()=>{const t=setTimeout(onDone,2400);return()=>clearTimeout(t);},[]);return <div className="vripple" style={{"--vc":p.color||"rgba(193,66,104,.6)"}}>{[0,320,660].map((d,i)=><div key={i} className="vring" style={{"--vd":"1.55s",animationDelay:`${d}ms`}}/>)}<div className="vripple-i">{p.icon}</div><div className="vripple-n">@{n(partner)}</div><div className="vripple-s">{p.name}</div></div>;}
 
 /* ─── TG HOOK ─── */
-function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",photoUrl:u?.photo_url||null,share};}
+function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData)||!!(tg?.initDataUnsafe?.user);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",photoUrl:u?.photo_url||null,share};}
 
 /* ─── LANDING ─── */
 const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"}];
