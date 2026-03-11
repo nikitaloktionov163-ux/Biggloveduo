@@ -431,6 +431,18 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .qa-archive{max-width:560px;margin-inline:auto;}
 .qa-archive summary{font-size:11px;font-weight:600;color:var(--ink3);cursor:pointer;padding:10px 0;text-align:center;list-style:none;}
 .qa-archive-item{padding:16px 0;border-top:1px solid rgba(255,255,255,.04);}
+.map-container{width:100%;height:300px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-bottom:14px;}
+.map-controls{margin-bottom:12px;text-align:center;}
+.map-tip{font-size:12px;color:rgba(193,66,104,.8);padding:10px 14px;background:rgba(193,66,104,.07);border-radius:10px;border:1px solid rgba(193,66,104,.18);display:inline-block;}
+.map-form{display:flex;flex-direction:column;gap:7px;max-width:380px;margin-inline:auto;margin-top:10px;}
+.places-list{display:flex;flex-direction:column;gap:6px;max-width:480px;margin-inline:auto;margin-top:4px;}
+.place-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:12px;cursor:pointer;transition:all .2s var(--e1);}
+.place-item:hover{border-color:rgba(193,66,104,.22);transform:translateX(3px);}
+.place-em{font-size:20px;flex-shrink:0;}
+.place-name{font-size:13px;font-weight:600;color:var(--ink);}
+.place-note{font-size:11px;color:var(--ink3);margin-top:2px;}
+.place-del{font-size:10px;color:var(--ink3);cursor:pointer;margin-left:auto;padding:2px 5px;border-radius:4px;transition:color .18s;}
+.place-del:hover{color:rgba(240,100,100,.7);}
 .swipe-dots{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
 @media(max-width:560px){.swipe-dots{display:flex;}}
 .swipe-dot{width:5px;height:5px;border-radius:50%;background:rgba(243,239,244,.18);transition:all .3s var(--e1);flex-shrink:0;}
@@ -713,6 +725,91 @@ function QASec({pid,me,partner}){
     </div>
   );
 }
+const PLACE_EMOJIS=["📍","❤️","🌹","🏠","☕","🎭","🏖️","🏔️","🍕","🎵","✨","💋"];
+function MapSec({pid,me}){
+  const c=coll("places",pid);
+  const[places,sPlaces]=useState([]);
+  const[adding,sAdding]=useState(false);
+  const[pending,sPending]=useState(null);
+  const[name,sName]=useState("");
+  const[note,sNote]=useState("");
+  const[em,sEm]=useState("📍");
+  const mapRef=useRef(null);
+  const mapI=useRef(null);
+  const mks=useRef({});
+
+  useEffect(()=>{c.load().then(d=>{if(Array.isArray(d))sPlaces(d);});},[]);
+  useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>{if(Array.isArray(d))sPlaces(d);}),30000);return()=>clearInterval(iv);},[]);
+
+  // Init Leaflet map
+  useEffect(()=>{
+    if(!mapRef.current||mapI.current||!window.L)return;
+    const map=window.L.map(mapRef.current,{zoomControl:true}).setView([55.75,37.62],4);
+    window.L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{attribution:"©OpenStreetMap ©CartoDB",maxZoom:19}).addTo(map);
+    map.on("click",e=>{
+      if(!mapI._adding)return;
+      sPending({lat:e.latlng.lat,lng:e.latlng.lng});
+    });
+    mapI.current=map;
+  },[]);
+
+  // Sync adding state to ref so map click handler sees it
+  useEffect(()=>{mapI._adding=adding;},[adding]);
+
+  // Update markers when places change
+  useEffect(()=>{
+    if(!mapI.current||!window.L)return;
+    Object.values(mks.current).forEach(m=>m.remove());
+    mks.current={};
+    places.forEach(p=>{
+      const icon=window.L.divIcon({html:`<div style="font-size:22px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))">${p.em}</div>`,className:"",iconSize:[28,28],iconAnchor:[14,14]});
+      const mk=window.L.marker([p.lat,p.lng],{icon}).addTo(mapI.current).bindPopup(`<b>${p.name}</b>${p.note?"<br><small>"+p.note+"</small>":""}`);
+      mks.current[p.id]=mk;
+    });
+    if(places.length>0){const last=places[places.length-1];mapI.current.setView([last.lat,last.lng],6);}
+  },[places]);
+
+  const save=async()=>{
+    if(!pending||!name.trim())return;
+    const pl={id:Date.now(),name:name.trim(),note:note.trim(),lat:pending.lat,lng:pending.lng,em,by:me,ts:Date.now()};
+    const updated=[...places,pl];
+    sPlaces(updated);await c.save(updated);
+    sName("");sNote("");sPending(null);sAdding(false);
+  };
+
+  const remove=async(id)=>{
+    const updated=places.filter(p=>p.id!==id);
+    sPlaces(updated);await c.save(updated);
+  };
+
+  return(
+    <div className="sec" id="map">
+      <div className="sec-in">
+        <span className="brow">Наши места</span>
+        <h2 className="sh">Где мы <em>были вместе</em></h2>
+        <p className="sp">Отмечайте места на карте — первое свидание, любимое кафе, путешествия.</p>
+        <div ref={mapRef} className="map-container"/>
+        <div className="map-controls">
+          {!adding&&<button className="fa" onClick={()=>{sAdding(true);sPending(null);}}>+ Отметить место</button>}
+          {adding&&!pending&&<div className="map-tip">👆 Нажмите на карту чтобы выбрать место</div>}
+          {adding&&pending&&<div className="map-form">
+            <div className="ep">{PLACE_EMOJIS.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sEm(e)}>{e}</span>)}</div>
+            <div className="row"><input className="fi" placeholder="Название места" value={name} onChange={e=>sName(e.target.value)}/><button className="fa" disabled={!name.trim()} onClick={save}>Сохранить</button></div>
+            <input className="fi" placeholder="Заметка (необязательно)" value={note} onChange={e=>sNote(e.target.value)}/>
+            <button className="prof-edit-btn" style={{marginTop:2}} onClick={()=>{sPending(null);sAdding(false);}}>Отмена</button>
+          </div>}
+        </div>
+        {places.length>0&&<div className="places-list">{[...places].reverse().slice(0,8).map(p=>(
+          <div key={p.id} className="place-item" onClick={()=>mapI.current?.setView([p.lat,p.lng],13)}>
+            <span className="place-em">{p.em}</span>
+            <div style={{flex:1}}><div className="place-name">{p.name}</div>{p.note&&<div className="place-note">{p.note}</div>}</div>
+            {p.by&&norm(p.by)===norm(me)&&<span className="place-del" onClick={e=>{e.stopPropagation();remove(p.id);}}>✕</span>}
+          </div>
+        ))}</div>}
+      </div>
+    </div>
+  );
+}
 function KissBox({start}){const[e,se]=useState(0);useEffect(()=>{if(!start)return;const iv=setInterval(()=>se(Math.floor((Date.now()-start)/1000)),100);return()=>clearInterval(iv);},[start]);const f=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;return <div className="kiss-box"><span className="kiss-em">💋</span><div className="kiss-t">{f(e)}</div><div className="kiss-l">Держите…</div></div>;}
 
 /* ─── VIBE RIPPLE ─── */
@@ -722,7 +819,7 @@ function VibeRipple({vid,partner,onDone}){const p=VIBES.find(x=>x.id===vid)||VIB
 function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",photoUrl:u?.photo_url||null,share};}
 
 /* ─── LANDING ─── */
-const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"promises",l:"Обещания"}];
+const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"}];
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[stuck,sS]=useState(false);const[active,sA]=useState("hero");
@@ -762,7 +859,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   useEffect(()=>{if(chat)sUnread(0);},[chat]);
 
   const scrollTo=id=>sRefs.current[id]?.scrollIntoView({behavior:"smooth"});
-  const SWIPE_ORDER=["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","promises"];
+  const SWIPE_ORDER=["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","map","promises"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
@@ -821,6 +918,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="hr"/>
       <section ref={el=>sRefs.current.travel=el}><TravelSec pid={pid} me={me}/></section>
       <div className="hr"/>
+      <section id="map" ref={el=>sRefs.current.map=el}><MapSec pid={pid} me={me}/></section>
+      <div className="hr"/>
       <section ref={el=>sRefs.current.promises=el}><PromisesSec pid={pid} me={me}/></section>
 
       <footer className="foot"><p className="foot-t">@{n(me)} & @{n(partner)} · только вы двое 💕</p></footer>
@@ -839,7 +938,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}</div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots">{["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots">{["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","map","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
