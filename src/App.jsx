@@ -5,634 +5,525 @@ import { useState, useEffect, useRef, useCallback } from "react";
 ══════════════════════════════════════════════════════ */
 const SUPABASE_URL = 'https://zghswvujqwshonctoulx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_uLz5P6pKZ_r7aru5HmvMbw_MWoxAM_t';
-const TTL_MS  = 15 * 60 * 1000;
-const normalize = s => s.replace(/^@/, "").toLowerCase().trim();
+const TTL = 15 * 60 * 1000;
+const norm = s => (s||"").replace(/^@/,"").toLowerCase().trim();
+const pairKey = (a,b) => [norm(a),norm(b)].sort().join("_");
 
-const supaFetch = async (key, value = undefined) => {
+const supaFetch = async (key, val) => {
   const base = `${SUPABASE_URL}/rest/v1/duo_store`;
-  const headers = {
-    'apikey': SUPABASE_KEY,
-    'Authorization': `Bearer ${SUPABASE_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'resolution=merge-duplicates,return=minimal',
-  };
-  if (value === undefined) {
-    const r = await fetch(`${base}?key=eq.${encodeURIComponent(key)}&select=value`, { headers });
-    const d = await r.json();
-    return d?.[0]?.value ?? null;
-  }
-  if (value === null) {
-    await fetch(`${base}?key=eq.${encodeURIComponent(key)}`, { method: 'DELETE', headers });
-    return;
-  }
-  await fetch(base, { method: 'POST', headers, body: JSON.stringify({ key, value: JSON.stringify(value) }) });
+  const h = { apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`, "Content-Type":"application/json", Prefer:"resolution=merge-duplicates,return=minimal" };
+  if (val===undefined) { const r=await fetch(`${base}?key=eq.${encodeURIComponent(key)}&select=value`,{headers:h}); const d=await r.json(); return d?.[0]?.value??null; }
+  if (val===null) { await fetch(`${base}?key=eq.${encodeURIComponent(key)}`,{method:"DELETE",headers:h}); return; }
+  await fetch(base,{method:"POST",headers:h,body:JSON.stringify({key,value:JSON.stringify(val)})});
+};
+const db = {
+  set: async (k,v)=>{ try{await supaFetch(k,v);}catch(e){} },
+  get: async (k)=>{ try{const r=await supaFetch(k);return r?JSON.parse(r):null;}catch{return null;} },
+  del: async (k)=>{ try{await supaFetch(k,null);}catch(e){} },
 };
 
-async function s_set(k, v) { await supaFetch(k, v); }
-async function s_get(k) { try { const r = await supaFetch(k); return r ? JSON.parse(r) : null; } catch { return null; } }
-async function s_del(k) { await supaFetch(k, null); }
+const POLL = 1500;
 
-const POLL_MS = 1200;
+/* presence */
+const savePresence = (me,to) => db.set(`duo:${norm(me)}`,{wants:norm(to),ts:Date.now()});
+const loadPresence = async n => { const d=await db.get(`duo:${norm(n)}`); return d&&Date.now()-d.ts<TTL?d:null; };
+const clearAll = me => ["duo","duo_state","duo_moments","duo_calendar","duo_wishes","duo_dreams","duo_travel"].forEach(k=>db.del(`${k}:${norm(me)}`));
 
-async function savePresence(me, to)  { await s_set(`duo:${normalize(me)}`, { wants: normalize(to), ts: Date.now() }); }
-async function loadPresence(n)       { const d = await s_get(`duo:${normalize(n)}`); return d && Date.now()-d.ts < TTL_MS ? d : null; }
-async function clearPresence(n)      { for (const k of ["duo","duo_state","duo_moments","duo_calendar"]) await s_del(`${k}:${normalize(n)}`); }
-async function saveState(me, data)   { await s_set(`duo_state:${normalize(me)}`, { ...data, ts: Date.now() }); }
-async function loadState(n)          { const d = await s_get(`duo_state:${normalize(n)}`); return d && Date.now()-d.ts < TTL_MS ? d : null; }
-async function saveMoments(pair, arr){ await s_set(`duo_moments:${pair}`, arr); }
-async function loadMoments(pair)     { return (await s_get(`duo_moments:${pair}`)) || []; }
-async function saveCalendar(pair, arr){ await s_set(`duo_calendar:${pair}`, arr); }
-async function loadCalendar(pair)    { return (await s_get(`duo_calendar:${pair}`)) || []; }
+/* live state */
+const saveState = (me,data) => db.set(`duo_state:${norm(me)}`,{...data,ts:Date.now()});
+const loadState = async n => { const d=await db.get(`duo_state:${norm(n)}`); return d&&Date.now()-d.ts<TTL?d:null; };
 
-const pairKey = (a, b) => [normalize(a), normalize(b)].sort().join("_");
+/* shared collections */
+const dbColl = (key,pair) => ({ save: arr=>db.set(`${key}:${pair}`,arr), load: ()=>db.get(`${key}:${pair}`).then(r=>r||[]) });
 
-async function saveWishes(pair, arr)   { await s_set(`duo_wishes:${pair}`, arr); }
-async function loadWishes(pair)        { return (await s_get(`duo_wishes:${pair}`)) || []; }
-async function saveDreams(user, arr)   { await s_set(`duo_dreams:${normalize(user)}`, arr); }
-async function loadDreams(user)        { return (await s_get(`duo_dreams:${normalize(user)}`)) || []; }
-async function saveTravel(pair, arr)   { await s_set(`duo_travel:${pair}`, arr); }
-async function loadTravel(pair)        { return (await s_get(`duo_travel:${pair}`)) || []; }
+/* per-user collections */
+const dbUser = (key,user) => ({ save: arr=>db.set(`${key}:${norm(user)}`,arr), load: ()=>db.get(`${key}:${norm(user)}`).then(r=>r||[]) });
 
 /* ══════════════════════════════════════════════════════
    AMBIENT AUDIO
 ══════════════════════════════════════════════════════ */
-class AmbientPlayer {
-  constructor(){ this.ctx=null; this.master=null; this.playing=false; }
-  start(){
-    if(this.playing) return;
+class Ambient {
+  start() {
+    if (this.ctx) return;
     this.ctx = new (window.AudioContext||window.webkitAudioContext)();
-    this.master = this.ctx.createGain();
-    this.master.gain.setValueAtTime(0, 0);
-    this.master.gain.linearRampToValueAtTime(0.05, this.ctx.currentTime+3);
-    this.master.connect(this.ctx.destination);
-    [[220,.5],[277.2,.35],[329.6,.25],[440,.12]].forEach(([freq,vol])=>{
-      const osc=this.ctx.createOscillator(), g=this.ctx.createGain();
-      const lfo=this.ctx.createOscillator(), lg=this.ctx.createGain();
-      osc.type="sine"; osc.frequency.value=freq;
-      lfo.type="sine"; lfo.frequency.value=0.06+Math.random()*.05;
-      lg.gain.value=1.5; lfo.connect(lg); lg.connect(osc.frequency);
-      g.gain.value=vol; osc.connect(g); g.connect(this.master);
-      osc.start(); lfo.start();
-    });
-    this.playing=true;
+    const m = this.ctx.createGain(); m.gain.setValueAtTime(0,0); m.gain.linearRampToValueAtTime(.045,this.ctx.currentTime+3); m.connect(this.ctx.destination);
+    [[196,.4],[246.9,.3],[293.7,.2],[392,.1]].forEach(([f,v])=>{ const o=this.ctx.createOscillator(),g=this.ctx.createGain(),l=this.ctx.createOscillator(),lg=this.ctx.createGain(); o.type="sine";o.frequency.value=f;l.type="sine";l.frequency.value=.05+Math.random()*.04;lg.gain.value=1.2;l.connect(lg);lg.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();l.start(); });
+    this.master = m;
   }
-  stop(){
-    if(!this.playing) return;
-    if(this.ctx){ this.ctx.close(); this.ctx=null; }
-    this.master=null; this.playing=false;
-  }
+  stop() { if (!this.ctx) return; try{this.ctx.close();}catch(e){} this.ctx=null; this.master=null; }
 }
-const ambient = new AmbientPlayer();
-
-/* ══════════════════════════════════════════════════════
-   VIBE PATTERNS
-══════════════════════════════════════════════════════ */
-const VIBE_PATTERNS = [
-  { id:"tap",     emoji:"👆", label:"Лёгкое касание",  pattern:[60],                color:"rgba(212,168,83,.9)"  },
-  { id:"heart",   emoji:"💓", label:"Сердцебиение",    pattern:[120,80,120],        color:"rgba(232,82,122,.9)"  },
-  { id:"passion", emoji:"🔥", label:"Страсть",         pattern:[200,80,200,80,400], color:"rgba(255,120,50,.9)"  },
-  { id:"sos",     emoji:"💌", label:"Думаю о тебе",    pattern:[80,50,80,50,300,50,80],color:"rgba(100,210,255,.9)"},
-];
-
-const REACTS = ["❤️","💕","🌹","😍","✨","🫶","💋","🥰","💖","🔥"];
+const amb = new Ambient();
 
 /* ══════════════════════════════════════════════════════
    CSS
 ══════════════════════════════════════════════════════ */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Outfit:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,700;1,300;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,200;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=Cormorant+Garamond:ital,wght@1,300;1,600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
-  --font-r:'Playfair Display',Georgia,serif;
-  --font-d:'Cormorant Garamond',Georgia,serif;
-  --font-b:'Outfit',sans-serif;
-  --rose:#e8527a;--rose-lo:#c23d5f;--rose-hi:#f07090;
-  --gold:#d4a853;--teal:#64d2ff;--purple:#bf5af2;--green:#30d158;
-  --fg:#f5f0eb;--fg2:rgba(245,240,235,.62);--fg3:rgba(245,240,235,.36);
-  --bg:#0d0810;--card:rgba(20,12,18,.95);
+  --serif:'Libre Baskerville',Georgia,serif;
+  --italic:'Cormorant Garamond',Georgia,serif;
+  --sans:'DM Sans',sans-serif;
+  --rose:#e05d7b;--rose2:#c24565;--rose3:rgba(224,93,123,.12);
+  --gold:#c9a44e;--gold2:rgba(201,164,78,.15);
+  --teal:#5bbfd4;--green:#27c46e;--amber:#e0934a;
+  --bg:#0b0a0f;--bg2:#110f17;--bg3:#17141f;
+  --card:rgba(23,20,31,.96);
+  --line:rgba(255,255,255,.07);--line2:rgba(224,93,123,.15);
+  --fg:#f0ebe8;--fg2:rgba(240,235,232,.65);--fg3:rgba(240,235,232,.35);
   --ease:cubic-bezier(.22,1,.36,1);--spring:cubic-bezier(.34,1.56,.64,1);
+  --r8:8px;--r12:12px;--r16:16px;--r20:20px;--r24:24px;
 }
-html,body,#root{height:100%;background:var(--bg);color:var(--fg);font-family:var(--font-b);}
+html,body,#root{height:100%;background:var(--bg);color:var(--fg);font-family:var(--sans);-webkit-font-smoothing:antialiased;}
 
-/* ── CONNECT ── */
-.co-wrap{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden;}
-.co-bg{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 55% at 15% 15%,rgba(232,82,122,.16) 0%,transparent 58%),radial-gradient(ellipse 50% 45% at 85% 80%,rgba(212,168,83,.12) 0%,transparent 56%);}
-.petal{position:absolute;pointer-events:none;border-radius:50% 0 50% 0;opacity:0;animation:pf linear infinite;}
-@keyframes pf{0%{transform:translateY(-30px) rotate(0deg);opacity:0}10%{opacity:.35}90%{opacity:.2}100%{transform:translateY(110vh) rotate(540deg);opacity:0}}
-.co-card{position:relative;z-index:2;width:min(410px,93vw);background:var(--card);border:1px solid rgba(232,82,122,.20);border-radius:32px;padding:40px 34px 36px;backdrop-filter:blur(32px);box-shadow:0 0 0 1px rgba(232,82,122,.08) inset,0 60px 140px rgba(0,0,0,.85);text-align:center;animation:ci .75s var(--ease) both;max-height:92vh;overflow-y:auto;}
-@keyframes ci{from{opacity:0;transform:translateY(28px) scale(.96)}to{opacity:1;transform:none}}
-.co-heart{font-size:34px;display:block;margin-bottom:18px;animation:hb 2.4s ease-in-out infinite;filter:drop-shadow(0 0 12px rgba(232,82,122,.6));}
-@keyframes hb{0%,100%{transform:scale(1)}14%{transform:scale(1.18)}28%{transform:scale(1)}42%{transform:scale(1.1)}}
-.co-title{font-family:var(--font-r);font-size:clamp(24px,5.5vw,32px);font-weight:700;letter-spacing:-.02em;line-height:1.15;margin-bottom:6px;}
-.co-title em{font-style:italic;color:var(--rose-hi);}
-.co-sub{font-size:13px;color:var(--fg3);line-height:1.65;max-width:300px;margin:0 auto 26px;}
-.co-divider{display:flex;align-items:center;gap:10px;margin-bottom:22px;}
-.co-divider-line{flex:1;height:1px;background:rgba(232,82,122,.15);}
-.co-field{margin-bottom:13px;text-align:left;}
-.co-label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:rgba(232,82,122,.7);display:block;margin-bottom:5px;}
-.co-input-wrap{position:relative;display:flex;align-items:center;}
-.co-at{position:absolute;left:13px;font-size:15px;font-weight:600;color:rgba(232,82,122,.6);pointer-events:none;}
-.co-input{width:100%;padding:12px 13px 12px 29px;background:rgba(255,255,255,.04);border:1px solid rgba(232,82,122,.18);border-radius:13px;color:var(--fg);font-family:var(--font-b);font-size:14px;outline:none;transition:border-color .22s,box-shadow .22s;}
-.co-input:focus{border-color:rgba(232,82,122,.55);box-shadow:0 0 0 3px rgba(232,82,122,.09);}
-.co-input::placeholder{color:var(--fg3);}
-.co-input-plain{padding-left:13px;}
-.co-hint{font-size:11px;color:var(--fg3);margin-top:4px;padding-left:2px;line-height:1.5;}
-.co-error{font-size:12px;color:#ff6b6b;text-align:left;margin-bottom:10px;}
-.co-btn{width:100%;margin-top:6px;padding:14px;border-radius:15px;background:linear-gradient(135deg,var(--rose),var(--rose-lo));color:#fff;font-family:var(--font-b);font-size:14px;font-weight:600;border:none;cursor:pointer;box-shadow:0 8px 26px rgba(232,82,122,.35);transition:opacity .18s,transform .18s var(--spring);}
-.co-btn:hover:not(:disabled){opacity:.91;transform:scale(1.01);}
-.co-btn:disabled{opacity:.3;cursor:not-allowed;}
-.co-waiting{display:flex;flex-direction:column;align-items:center;gap:16px;padding:4px 0;animation:ci .5s var(--ease) both;}
-.co-orb{width:76px;height:76px;border-radius:50%;background:radial-gradient(circle at 38% 34%,rgba(232,82,122,.45),rgba(232,82,122,.08));border:1px solid rgba(232,82,122,.3);display:flex;align-items:center;justify-content:center;font-size:30px;position:relative;}
-.co-orb::before,.co-orb::after{content:'';position:absolute;border-radius:50%;border:1px solid rgba(232,82,122,.15);animation:rr 2.4s ease-out infinite;}
-.co-orb::before{inset:-10px;}
-.co-orb::after{inset:-22px;animation-delay:.8s;border-color:rgba(232,82,122,.08);}
-@keyframes rr{0%{transform:scale(.8);opacity:1}100%{transform:scale(1.3);opacity:0}}
-.co-wait-name{font-family:var(--font-r);font-size:21px;font-weight:700;}
-.co-wait-name span{color:var(--rose-hi);}
-.co-wait-sub{font-size:13px;color:var(--fg3);line-height:1.65;text-align:center;max-width:280px;}
-.co-wait-sub strong{color:var(--fg2);}
-.co-wait-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--rose);margin-right:6px;vertical-align:middle;animation:bd 1.5s ease-in-out infinite;}
-@keyframes bd{0%,100%{opacity:1}50%{opacity:.15}}
-.co-cancel{font-size:12px;color:var(--fg3);cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+/* scrollbar */
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px;}
 
-/* ── BURST ── */
-.burst-wrap{position:fixed;inset:0;z-index:1001;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(13,8,16,.97);animation:brf 3.2s var(--ease) forwards;pointer-events:none;}
-@keyframes brf{0%,55%{opacity:1}100%{opacity:0}}
-.burst-hearts{position:absolute;inset:0;overflow:hidden;}
-.burst-heart-p{position:absolute;animation:hfl linear forwards;opacity:0;}
-@keyframes hfl{0%{transform:translateY(0) rotate(var(--r,0deg)) scale(.5);opacity:0}15%{opacity:.9}100%{transform:translateY(-80vh) rotate(calc(var(--r)+180deg)) scale(.6);opacity:0}}
-.burst-ring{width:110px;height:110px;border-radius:50%;border:2px solid var(--rose);display:flex;align-items:center;justify-content:center;animation:rp .65s var(--spring) .1s both;box-shadow:0 0 48px rgba(232,82,122,.5);}
-@keyframes rp{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
-.burst-icon{font-size:44px;animation:rp .7s var(--spring) .25s both;}
-.burst-text{font-family:var(--font-r);font-size:clamp(32px,6vw,46px);font-weight:700;margin-top:28px;animation:su .8s var(--ease) .4s both;}
-.burst-sub{font-size:15px;color:var(--fg2);margin-top:8px;animation:su .8s var(--ease) .58s both;}
-.burst-sub span{color:var(--rose-hi);}
-@keyframes su{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* ── connect screen ── */
+.co{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse 80% 60% at 20% 10%,rgba(224,93,123,.09),transparent 55%),radial-gradient(ellipse 60% 50% at 80% 85%,rgba(201,164,78,.07),transparent 50%),var(--bg);}
+.co-petals{position:absolute;inset:0;overflow:hidden;pointer-events:none;}
+.petal{position:absolute;border-radius:50% 0 50% 0;opacity:0;animation:pfall linear infinite;}
+@keyframes pfall{0%{opacity:0;transform:translateY(-20px) rotate(0deg)}8%{opacity:.3}92%{opacity:.15}100%{opacity:0;transform:translateY(105vh) rotate(480deg)}}
+.co-card{position:relative;z-index:2;width:min(400px,94vw);background:var(--card);border:1px solid var(--line2);border-radius:28px;padding:clamp(28px,5vw,40px);backdrop-filter:blur(40px);box-shadow:0 0 0 1px rgba(224,93,123,.06) inset,0 40px 120px rgba(0,0,0,.8);animation:fadeup .6s var(--ease) both;}
+@keyframes fadeup{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
+.co-icon{font-size:28px;display:block;margin-bottom:16px;animation:pulse 2.2s ease-in-out infinite;filter:drop-shadow(0 0 10px rgba(224,93,123,.5));}
+@keyframes pulse{0%,100%{transform:scale(1)}14%{transform:scale(1.15)}28%{transform:scale(1)}}
+.co-h{font-family:var(--serif);font-size:clamp(22px,5vw,28px);font-weight:700;letter-spacing:-.025em;line-height:1.2;margin-bottom:5px;}
+.co-h em{font-style:italic;color:rgba(224,93,123,.9);}
+.co-sub{font-size:13px;color:var(--fg3);line-height:1.65;margin-bottom:22px;}
+.field{margin-bottom:12px;}
+.field-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(224,93,123,.65);display:block;margin-bottom:5px;}
+.field-hint{font-size:11px;color:var(--fg3);margin-top:4px;}
+.inp-wrap{position:relative;display:flex;align-items:center;}
+.inp-at{position:absolute;left:12px;font-size:14px;font-weight:600;color:rgba(224,93,123,.5);pointer-events:none;}
+.inp{width:100%;padding:11px 12px 11px 28px;background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:var(--r12);color:var(--fg);font-family:var(--sans);font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;}
+.inp:focus{border-color:rgba(224,93,123,.5);box-shadow:0 0 0 3px rgba(224,93,123,.08);}
+.inp::placeholder{color:var(--fg3);}
+.inp-plain{padding-left:12px;}
+.textarea{width:100%;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:var(--r12);color:var(--fg);font-family:var(--sans);font-size:13px;outline:none;resize:none;min-height:62px;line-height:1.55;transition:border-color .2s;}
+.textarea:focus{border-color:rgba(224,93,123,.5);}
+.textarea::placeholder{color:var(--fg3);}
+.err{font-size:12px;color:#f06060;margin-bottom:10px;}
+.btn-rose{width:100%;padding:13px;border-radius:var(--r12);background:linear-gradient(135deg,var(--rose),var(--rose2));color:#fff;font-family:var(--sans);font-size:14px;font-weight:600;border:none;cursor:pointer;box-shadow:0 6px 22px rgba(224,93,123,.3);transition:opacity .18s,transform .18s var(--spring);}
+.btn-rose:hover:not(:disabled){opacity:.88;transform:scale(1.01);}
+.btn-rose:disabled{opacity:.28;cursor:not-allowed;}
+.divider-line{display:flex;align-items:center;gap:10px;margin:18px 0;}
+.divider-line::before,.divider-line::after{content:"";flex:1;height:1px;background:var(--line2);}
+.divider-line span{font-size:12px;color:var(--fg3);}
 
-/* ── RIBBON ── */
-.ribbon{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:900;background:rgba(20,12,18,.95);border:1px solid rgba(232,82,122,.24);border-radius:999px;backdrop-filter:blur(22px);padding:8px 14px 8px 11px;display:flex;align-items:center;gap:7px;box-shadow:0 0 0 1px rgba(232,82,122,.07) inset,0 12px 40px rgba(0,0,0,.65),0 0 28px rgba(232,82,122,.08);animation:ci .5s var(--ease) both;white-space:nowrap;max-width:98vw;}
-.ribbon-heart{font-size:15px;animation:hb 2.4s ease-in-out infinite;filter:drop-shadow(0 0 5px rgba(232,82,122,.5));}
-.ribbon-ava{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--rose),#8b1a3a);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;text-transform:uppercase;}
-.ribbon-text{font-size:12px;color:var(--fg2);}
-.ribbon-text strong{color:var(--fg);font-weight:600;}
-.ribbon-at{color:var(--rose-hi);}
-.ribbon-actions{display:flex;align-items:center;gap:4px;border-left:1px solid rgba(232,82,122,.14);padding-left:7px;}
-.rbtn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;transition:background .18s,transform .18s var(--spring);position:relative;flex-shrink:0;}
-.rbtn:hover{background:rgba(255,255,255,.12);transform:scale(1.1);}
-.rbtn.active{background:rgba(232,82,122,.22);border-color:rgba(232,82,122,.4);}
-.rbtn.kiss-active{background:rgba(232,82,122,.35);border-color:rgba(232,82,122,.7);box-shadow:0 0 12px rgba(232,82,122,.5);animation:kiss-pulse 1s ease-in-out infinite;}
-@keyframes kiss-pulse{0%,100%{box-shadow:0 0 10px rgba(232,82,122,.4)}50%{box-shadow:0 0 22px rgba(232,82,122,.8)}}
-.rbtn-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;background:var(--rose);font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;}
-.ribbon-disc{font-size:10px;color:var(--fg3);cursor:pointer;border-left:1px solid rgba(232,82,122,.12);padding-left:7px;transition:color .18s;flex-shrink:0;}
-.ribbon-disc:hover{color:#ff6b6b;}
-.music-bars{display:flex;align-items:center;gap:2px;height:13px;}
-.music-bar{width:2px;border-radius:1px;background:var(--rose-hi);animation:mb var(--d,.6s) ease-in-out infinite alternate;}
-@keyframes mb{0%{height:2px;opacity:.4}100%{height:var(--h,11px);opacity:.9}}
-.rbtn.vibe-sent{animation:vibe-sent-pulse .5s var(--spring) both;}
-@keyframes vibe-sent-pulse{0%{transform:scale(1)}40%{transform:scale(1.35);background:rgba(232,82,122,.4)}100%{transform:scale(1)}}
+/* waiting */
+.co-wait{display:flex;flex-direction:column;align-items:center;gap:14px;padding:8px 0;animation:fadeup .4s var(--ease) both;}
+.orb{width:72px;height:72px;border-radius:50%;background:radial-gradient(circle at 40% 35%,rgba(224,93,123,.4),rgba(224,93,123,.06));border:1px solid rgba(224,93,123,.25);display:flex;align-items:center;justify-content:center;font-size:28px;position:relative;}
+.orb::before,.orb::after{content:"";position:absolute;border-radius:50%;border:1px solid rgba(224,93,123,.12);animation:ripple 2.2s ease-out infinite;}
+.orb::before{inset:-10px;}
+.orb::after{inset:-22px;animation-delay:.75s;border-color:rgba(224,93,123,.06);}
+@keyframes ripple{0%{opacity:.9;transform:scale(.85)}100%{opacity:0;transform:scale(1.3)}}
+.wait-name{font-family:var(--serif);font-size:20px;font-weight:700;}
+.wait-name span{color:rgba(224,93,123,.9);}
+.wait-info{font-size:12px;color:var(--fg3);text-align:center;max-width:260px;line-height:1.7;}
+.wait-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--rose);vertical-align:middle;margin-right:5px;animation:blink 1.5s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.1}}
+.wait-cancel{font-size:12px;color:var(--fg3);cursor:pointer;text-decoration:underline;text-underline-offset:3px;transition:color .2s;}
+.wait-cancel:hover{color:var(--fg2);}
 
-/* ── MAIN LAYOUT ── */
-.land-wrap{height:100vh;overflow-y:scroll;overflow-x:hidden;position:relative;scroll-behavior:smooth;}
-.land-wrap::-webkit-scrollbar{width:3px;}
-.land-wrap::-webkit-scrollbar-thumb{background:rgba(232,82,122,.25);border-radius:3px;}
+/* burst */
+.burst{position:fixed;inset:0;z-index:1001;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(11,10,15,.97);animation:burstanim 3s var(--ease) forwards;pointer-events:none;}
+@keyframes burstanim{0%,55%{opacity:1}100%{opacity:0}}
+.burst-bg{position:absolute;inset:0;overflow:hidden;}
+.burst-p{position:absolute;animation:bp linear forwards;opacity:0;}
+@keyframes bp{0%{transform:translateY(0) rotate(var(--r)) scale(.5);opacity:0}12%{opacity:.85}100%{transform:translateY(-85vh) rotate(calc(var(--r) + 200deg)) scale(.55);opacity:0}}
+.burst-ring{width:104px;height:104px;border-radius:50%;border:1.5px solid var(--rose);display:flex;align-items:center;justify-content:center;animation:pop .6s var(--spring) .1s both;box-shadow:0 0 44px rgba(224,93,123,.45);}
+@keyframes pop{from{transform:scale(.15);opacity:0}to{transform:scale(1);opacity:1}}
+.burst-icon{font-size:42px;animation:pop .7s var(--spring) .22s both;}
+.burst-title{font-family:var(--serif);font-size:clamp(30px,6vw,44px);font-weight:700;margin-top:26px;animation:slideup .7s var(--ease) .36s both;}
+.burst-names{font-size:14px;color:var(--fg2);margin-top:6px;animation:slideup .7s var(--ease) .5s both;}
+.burst-names span{color:rgba(224,93,123,.9);}
+@keyframes slideup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 
-/* ── NAV ── */
-.lnav{position:fixed;top:0;left:0;right:0;z-index:800;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,4vw,48px);height:52px;transition:background .3s;}
-.lnav.scrolled{background:rgba(13,8,16,.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(232,82,122,.10);}
-.lnav-logo{font-family:var(--font-r);font-size:17px;font-style:italic;color:var(--rose-hi);}
-.lnav-links{display:flex;gap:18px;list-style:none;}
-.lnav-link{font-size:12px;color:var(--fg3);cursor:pointer;transition:color .2s;}
-.lnav-link:hover,.lnav-link.active{color:var(--fg);}
-@media(max-width:600px){.lnav-links{display:none;}}
+/* ── MAIN APP ── */
+.app{height:100vh;overflow-y:scroll;overflow-x:hidden;position:relative;scroll-behavior:smooth;}
 
-/* ── TIMER PILL ── */
-.timer-pill{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:810;background:rgba(20,12,18,.88);border:1px solid rgba(232,82,122,.18);border-radius:999px;padding:5px 14px;backdrop-filter:blur(16px);display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fg2);animation:ci .5s var(--ease) both;white-space:nowrap;}
-.timer-dot{width:5px;height:5px;border-radius:50%;background:var(--rose);animation:bd 1.5s ease-in-out infinite;flex-shrink:0;}
-.timer-val{font-family:var(--font-d);font-size:14px;font-weight:700;color:var(--rose-hi);}
+/* nav */
+.nav{position:fixed;top:0;left:0;right:0;z-index:800;height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(14px,4vw,40px);transition:background .3s,border-color .3s;}
+.nav.stuck{background:rgba(11,10,15,.88);backdrop-filter:blur(24px);border-bottom:1px solid var(--line);}
+.nav-brand{font-family:var(--italic);font-size:18px;font-style:italic;color:rgba(224,93,123,.85);}
+.nav-links{display:flex;gap:2px;list-style:none;}
+.nav-link{font-size:11px;font-weight:500;color:var(--fg3);cursor:pointer;padding:4px 9px;border-radius:6px;transition:background .2s,color .2s;}
+.nav-link:hover,.nav-link.on{background:rgba(255,255,255,.06);color:var(--fg2);}
+@media(max-width:580px){.nav-links{display:none;}}
 
-/* ── HERO ── */
-.s-hero{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px clamp(20px,5vw,60px) 100px;background:radial-gradient(ellipse 70% 55% at 50% 30%,rgba(232,82,122,.13) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 80% 80%,rgba(212,168,83,.08) 0%,transparent 55%);}
-.hero-eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--rose);margin-bottom:16px;display:block;}
-.hero-h1{font-family:var(--font-d);font-size:clamp(48px,9vw,110px);font-weight:700;letter-spacing:-.04em;line-height:.95;background:linear-gradient(160deg,#fff 30%,rgba(255,255,255,.45));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:14px;}
-.hero-sub{font-family:var(--font-d);font-size:clamp(16px,2.5vw,24px);font-style:italic;font-weight:300;color:var(--fg2);margin-bottom:36px;max-width:480px;}
-.hero-stats{display:flex;gap:clamp(24px,5vw,60px);justify-content:center;flex-wrap:wrap;margin-bottom:48px;}
-.hero-stat-n{font-family:var(--font-d);font-size:clamp(34px,6vw,58px);font-weight:700;letter-spacing:-.04em;line-height:1;color:var(--rose-hi);}
-.hero-stat-l{font-size:11px;color:var(--fg3);margin-top:4px;letter-spacing:.07em;text-transform:uppercase;}
-.hero-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-.btn-p{padding:13px 28px;border-radius:999px;background:linear-gradient(135deg,var(--rose),var(--rose-lo));color:#fff;font-family:var(--font-b);font-size:14px;font-weight:600;border:none;cursor:pointer;box-shadow:0 6px 24px rgba(232,82,122,.3);transition:opacity .18s,transform .18s var(--spring);}
-.btn-g{padding:13px 28px;border-radius:999px;background:transparent;color:var(--fg);font-family:var(--font-b);font-size:14px;font-weight:600;border:1.5px solid rgba(255,255,255,.18);cursor:pointer;transition:opacity .18s,transform .18s var(--spring);}
-.btn-p:hover,.btn-g:hover{opacity:.84;transform:scale(1.02);}
-.scroll-hint{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;animation:su 1s var(--ease) 2s both;}
-.scroll-hint-line{width:1px;height:40px;background:linear-gradient(180deg,transparent,var(--rose));animation:sh 1.8s ease-in-out infinite;}
-@keyframes sh{0%,100%{opacity:.3;transform:scaleY(.5)}50%{opacity:1;transform:scaleY(1)}}
+/* together timer */
+.together-pill{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:805;background:rgba(17,15,23,.9);border:1px solid var(--line2);border-radius:999px;padding:4px 13px;backdrop-filter:blur(16px);display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fg3);animation:fadeup .4s var(--ease) both;white-space:nowrap;}
+.tpill-dot{width:5px;height:5px;border-radius:50%;background:var(--rose);animation:blink 1.5s ease-in-out infinite;}
+.tpill-val{font-family:var(--serif);font-size:13px;color:rgba(224,93,123,.9);}
 
-/* ── LOVE TIMER SECTION ── */
-.s-section{padding:clamp(70px,10vw,120px) clamp(20px,5vw,60px);}
-.s-center{max-width:900px;margin:0 auto;text-align:center;}
-.s-eyebrow{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--rose);display:block;margin-bottom:12px;}
-.s-h2{font-family:var(--font-d);font-size:clamp(28px,5vw,56px);font-weight:700;letter-spacing:-.03em;line-height:1.05;margin-bottom:12px;}
-.s-h2 em{font-style:italic;color:var(--fg2);}
-.s-sub{font-size:clamp(14px,1.8vw,18px);font-weight:300;color:var(--fg2);line-height:1.7;max-width:520px;margin:0 auto 40px;}
+/* partner bar */
+.pbar{position:fixed;right:5px;top:0;bottom:0;width:2px;z-index:700;pointer-events:none;}
+.pbar-track{position:absolute;inset:0;background:rgba(255,255,255,.04);border-radius:2px;}
+.pbar-thumb{position:absolute;left:0;right:0;height:32px;border-radius:2px;background:var(--rose);opacity:.7;box-shadow:0 0 8px rgba(224,93,123,.5);transition:top .5s var(--ease);}
+.pcursor{position:fixed;pointer-events:none;z-index:850;transition:left .15s linear,top .15s linear;}
+.pcursor-dot{width:11px;height:11px;border-radius:50%;background:var(--rose);border:2px solid rgba(255,255,255,.5);box-shadow:0 0 10px rgba(224,93,123,.7);}
+.pcursor-name{margin-top:4px;margin-left:4px;background:rgba(17,15,23,.9);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;font-size:10px;color:var(--fg2);white-space:nowrap;}
 
-/* love timer display */
-.love-timer-display{display:flex;gap:clamp(12px,3vw,32px);justify-content:center;flex-wrap:wrap;margin-bottom:32px;}
-.ltd-unit{text-align:center;}
-.ltd-n{font-family:var(--font-d);font-size:clamp(44px,8vw,80px);font-weight:700;letter-spacing:-.04em;line-height:1;background:linear-gradient(135deg,var(--rose-hi),var(--rose));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.ltd-l{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);margin-top:4px;}
-.ltd-sep{font-family:var(--font-d);font-size:clamp(40px,7vw,72px);font-weight:300;color:rgba(232,82,122,.3);line-height:1;align-self:flex-start;margin-top:2px;}
+/* ribbon */
+.ribbon{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:900;background:rgba(17,15,23,.96);border:1px solid rgba(224,93,123,.22);border-radius:999px;padding:7px 12px 7px 10px;display:flex;align-items:center;gap:6px;backdrop-filter:blur(24px);box-shadow:0 0 0 1px rgba(224,93,123,.06) inset,0 10px 36px rgba(0,0,0,.7),0 0 24px rgba(224,93,123,.07);animation:fadeup .4s var(--ease) both;white-space:nowrap;max-width:98vw;}
+.rib-ava{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,var(--rose),#7a1230);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;text-transform:uppercase;}
+.rib-lbl{font-size:11px;color:var(--fg2);}
+.rib-lbl strong{color:var(--fg);font-weight:600;}
+.rib-sep{width:1px;height:16px;background:var(--line2);flex-shrink:0;}
+.rib-btns{display:flex;gap:3px;}
+.rb{width:27px;height:27px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;transition:background .2s,transform .2s var(--spring);position:relative;flex-shrink:0;}
+.rb:hover{background:rgba(255,255,255,.12);transform:scale(1.1);}
+.rb.on{background:rgba(224,93,123,.2);border-color:rgba(224,93,123,.38);}
+.rb.kiss-on{background:rgba(224,93,123,.32);border-color:rgba(224,93,123,.65);box-shadow:0 0 10px rgba(224,93,123,.45);animation:kanim 1s ease-in-out infinite;}
+@keyframes kanim{0%,100%{box-shadow:0 0 8px rgba(224,93,123,.35)}50%{box-shadow:0 0 20px rgba(224,93,123,.75)}}
+.rb-badge{position:absolute;top:-4px;right:-4px;width:13px;height:13px;border-radius:50%;background:var(--rose);font-size:7.5px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.rib-exit{font-size:10px;color:var(--fg3);cursor:pointer;padding-left:2px;transition:color .18s;}
+.rib-exit:hover{color:#f06060;}
+.music-bars{display:flex;align-items:center;gap:1.5px;height:12px;}
+.mbar{width:2px;border-radius:1px;background:rgba(224,93,123,.8);animation:mb var(--d,.5s) ease-in-out infinite alternate;}
+@keyframes mb{0%{height:2px;opacity:.4}100%{height:var(--h,10px);opacity:.9}}
 
-/* start date picker */
-.start-date-card{background:rgba(255,255,255,.03);border:1px solid rgba(232,82,122,.15);border-radius:20px;padding:20px 24px;display:inline-flex;align-items:center;gap:14px;margin-top:8px;}
-.start-date-label{font-size:12px;color:var(--fg3);}
-.start-date-input{background:transparent;border:none;color:var(--rose-hi);font-family:var(--font-b);font-size:14px;font-weight:600;outline:none;cursor:pointer;}
-.start-date-input::-webkit-calendar-picker-indicator{filter:invert(.5) sepia(1) saturate(3) hue-rotate(290deg);cursor:pointer;}
+/* float reactions */
+.fr{position:fixed;pointer-events:none;z-index:960;font-size:var(--fs,28px);animation:float var(--dur,2.2s) var(--ease) forwards;}
+@keyframes float{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}100%{opacity:0;transform:translate(-50%,calc(-50% - 100px)) scale(.65)}}
 
-/* ── CALENDAR ── */
-.calendar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:32px;text-align:left;}
-.cal-card{background:rgba(255,255,255,.03);border:1px solid rgba(232,82,122,.12);border-radius:18px;padding:16px 18px;transition:border-color .25s,background .25s;animation:su .3s var(--ease) both;}
-.cal-card:hover{border-color:rgba(232,82,122,.3);background:rgba(255,255,255,.05);}
-.cal-card-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-.cal-card-emoji{font-size:22px;}
-.cal-card-date{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--gold);text-transform:uppercase;}
-.cal-card-title{font-size:15px;font-weight:600;color:var(--fg);line-height:1.3;}
-.cal-card-desc{font-size:12px;color:var(--fg3);margin-top:4px;line-height:1.55;}
-.cal-card-countdown{font-size:11px;color:rgba(232,82,122,.7);margin-top:8px;font-weight:600;}
-.cal-add{display:flex;flex-direction:column;gap:8px;margin-top:20px;max-width:500px;margin-inline:auto;}
-.cal-row{display:flex;gap:8px;}
-.cal-input{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(232,82,122,.16);border-radius:12px;padding:10px 13px;color:var(--fg);font-family:var(--font-b);font-size:13px;outline:none;transition:border-color .22s;}
-.cal-input:focus{border-color:rgba(232,82,122,.5);}
-.cal-input::placeholder{color:var(--fg3);}
-.cal-input-date{color:var(--fg2);}
-.cal-input-date::-webkit-calendar-picker-indicator{filter:invert(.4);}
-.cal-submit{padding:10px 22px;border-radius:12px;background:linear-gradient(135deg,var(--rose),var(--rose-lo));color:#fff;font-family:var(--font-b);font-size:13px;font-weight:600;border:none;cursor:pointer;white-space:nowrap;transition:opacity .18s,transform .18s var(--spring);}
-.cal-submit:hover:not(:disabled){opacity:.88;transform:scale(1.02);}
-.cal-submit:disabled{opacity:.3;cursor:not-allowed;}
+/* react panel */
+.react-row{position:fixed;bottom:68px;left:50%;transform:translateX(-50%);z-index:901;display:flex;gap:5px;background:rgba(17,15,23,.94);border:1px solid var(--line2);border-radius:999px;padding:8px 13px;backdrop-filter:blur(20px);animation:fadeup .25s var(--ease) both;}
+.react-em{font-size:21px;cursor:pointer;transition:transform .18s var(--spring);}
+.react-em:hover{transform:scale(1.32);}
 
-/* ── MOMENTS ── */
-.moments-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:32px;text-align:left;}
-.moment-card{background:rgba(255,255,255,.03);border:1px solid rgba(232,82,122,.12);border-radius:18px;padding:16px 18px;animation:su .3s var(--ease) both;transition:border-color .25s;}
-.moment-card:hover{border-color:rgba(232,82,122,.28);}
-.moment-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-.moment-who{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--rose);opacity:.8;}
-.moment-date{font-size:10px;color:var(--fg3);}
-.moment-text{font-size:13px;color:var(--fg2);line-height:1.65;}
-.moment-emoji{font-size:20px;margin-bottom:6px;display:block;}
-.moments-add{display:flex;flex-direction:column;gap:8px;margin-top:20px;max-width:500px;margin-inline:auto;}
-.moments-input{background:rgba(255,255,255,.04);border:1px solid rgba(232,82,122,.16);border-radius:12px;padding:11px 13px;color:var(--fg);font-family:var(--font-b);font-size:13px;outline:none;resize:none;transition:border-color .22s;min-height:72px;}
-.moments-input:focus{border-color:rgba(232,82,122,.5);}
-.moments-input::placeholder{color:var(--fg3);}
-.moments-row{display:flex;gap:8px;}
-.emoji-picker{display:flex;gap:6px;flex-wrap:wrap;}
-.emoji-opt{font-size:18px;cursor:pointer;padding:4px;border-radius:8px;transition:background .18s,transform .18s var(--spring);}
-.emoji-opt:hover{background:rgba(255,255,255,.08);transform:scale(1.2);}
-.emoji-opt.selected{background:rgba(232,82,122,.2);}
+/* vibe panel */
+.vibe-panel{position:fixed;bottom:68px;left:50%;transform:translateX(-50%);z-index:901;background:rgba(17,15,23,.96);border:1px solid var(--line2);border-radius:20px;padding:13px 14px 11px;backdrop-filter:blur(22px);min-width:200px;animation:fadeup .25s var(--ease) both;}
+.vibe-title{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);text-align:center;margin-bottom:8px;}
+.vibe-opts{display:flex;flex-direction:column;gap:4px;}
+.vibe-opt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:11px;cursor:pointer;border:1px solid transparent;transition:background .18s,transform .18s var(--spring);}
+.vibe-opt:hover{background:rgba(255,255,255,.05);transform:scale(1.02);}
+.vibe-em{font-size:17px;}
+.vibe-lbl{font-size:12px;font-weight:500;color:var(--fg2);}
+.vibe-ripple-wrap{position:fixed;inset:0;z-index:970;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;}
+.vibe-ring{position:absolute;border-radius:50%;border:1.5px solid;animation:vring var(--vd,1.5s) ease-out forwards;border-color:var(--vc,rgba(224,93,123,.5));}
+@keyframes vring{0%{width:0;height:0;opacity:.85;transform:translate(-50%,-50%)}100%{width:75vmax;height:75vmax;opacity:0;transform:translate(-50%,-50%)}}
+.vibe-icon{font-size:50px;animation:pop .4s var(--spring) both;filter:drop-shadow(0 0 24px var(--vc,rgba(224,93,123,.7)));}
+.vibe-text{font-family:var(--serif);font-size:clamp(17px,3.5vw,24px);font-weight:700;animation:slideup .45s var(--ease) .1s both;}
+.vibe-sub{font-size:12px;color:var(--fg3);animation:slideup .45s var(--ease) .22s both;}
 
-/* ── PROMISES ── */
-.promises-list{display:flex;flex-direction:column;gap:10px;margin-top:32px;max-width:640px;margin-inline:auto;text-align:left;}
-.promise-item{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(232,82,122,.10);border-radius:14px;animation:su .3s var(--ease) both;}
-.promise-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
-.promise-text{font-size:14px;color:var(--fg2);line-height:1.6;flex:1;}
-.promise-who{font-size:10px;color:rgba(232,82,122,.6);font-weight:600;margin-top:3px;text-transform:uppercase;letter-spacing:.05em;}
-.promise-add{display:flex;gap:8px;margin-top:16px;max-width:640px;margin-inline:auto;}
-.promise-input{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(232,82,122,.16);border-radius:12px;padding:11px 14px;color:var(--fg);font-family:var(--font-b);font-size:13px;outline:none;transition:border-color .22s;}
-.promise-input:focus{border-color:rgba(232,82,122,.5);}
-.promise-input::placeholder{color:var(--fg3);}
+/* kiss */
+.kiss-wrap{position:fixed;inset:0;z-index:950;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;}
+.kiss-box{background:rgba(17,15,23,.92);border:1px solid rgba(224,93,123,.3);border-radius:22px;padding:16px 28px;text-align:center;backdrop-filter:blur(20px);animation:fadeup .35s var(--ease) both;box-shadow:0 0 50px rgba(224,93,123,.2);}
+.kiss-em{font-size:40px;display:block;margin-bottom:7px;animation:pulse 1s ease-in-out infinite;}
+.kiss-t{font-family:var(--serif);font-size:48px;font-weight:700;letter-spacing:-.04em;line-height:1;background:linear-gradient(135deg,rgba(224,93,123,.9),var(--rose2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.kiss-l{font-size:10px;color:var(--fg3);margin-top:3px;letter-spacing:.07em;text-transform:uppercase;}
+.kiss-wait{font-size:13px;color:var(--fg3);background:rgba(17,15,23,.9);border:1px solid var(--line2);border-radius:18px;padding:11px 20px;text-align:center;backdrop-filter:blur(16px);}
+.kiss-wait strong{color:rgba(224,93,123,.85);}
+.kiss-toast{position:fixed;top:62px;left:50%;transform:translateX(-50%);z-index:910;background:rgba(17,15,23,.95);border:1px solid rgba(224,93,123,.28);border-radius:13px;padding:9px 18px;font-size:12px;color:var(--fg2);animation:fadeup .3s var(--ease) both,fadeout 2.5s var(--ease) 1.5s forwards;pointer-events:none;white-space:nowrap;}
+@keyframes fadeout{to{opacity:0}}
+.kiss-toast strong{color:rgba(224,93,123,.85);}
 
-/* ── SHARED SECTION DIVIDER ── */
-.section-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(232,82,122,.15),transparent);margin:0 clamp(20px,5vw,60px);}
+/* surprise */
+.surprise-bg{position:fixed;inset:0;z-index:990;display:flex;align-items:center;justify-content:center;background:rgba(11,10,15,.95);backdrop-filter:blur(10px);animation:fadeup .5s var(--ease) both;}
+.surprise-card{width:min(370px,90vw);background:var(--card);border:1px solid rgba(224,93,123,.22);border-radius:28px;padding:40px 30px 32px;text-align:center;box-shadow:0 32px 80px rgba(0,0,0,.75);animation:pop .65s var(--spring) .15s both;position:relative;overflow:hidden;}
+.surp-bg-blur{position:absolute;inset:0;border-radius:28px;background:radial-gradient(ellipse at 50% 0%,rgba(224,93,123,.1),transparent 60%);pointer-events:none;}
+.surp-em{font-size:32px;display:block;margin-bottom:14px;animation:pulse 2s ease-in-out infinite;}
+.surp-t{font-family:var(--serif);font-size:clamp(17px,4vw,24px);font-weight:700;color:rgba(224,93,123,.9);margin-bottom:11px;}
+.surp-msg{font-family:var(--italic);font-size:clamp(14px,2.2vw,19px);font-style:italic;font-weight:300;color:var(--fg2);line-height:1.8;margin-bottom:18px;}
+.surp-from{font-size:11px;color:var(--fg3);margin-bottom:20px;letter-spacing:.05em;}
+.surp-btn{padding:10px 26px;border-radius:999px;background:linear-gradient(135deg,var(--rose),var(--rose2));color:#fff;font-family:var(--sans);font-size:12px;font-weight:600;border:none;cursor:pointer;transition:transform .18s var(--spring);}
+.surp-btn:hover{transform:scale(1.04);}
 
-/* ── CHAT PANEL ── */
-.chat-panel{position:fixed;bottom:70px;right:20px;z-index:902;width:min(290px,86vw);background:rgba(20,12,18,.97);border:1px solid rgba(232,82,122,.22);border-radius:22px;backdrop-filter:blur(24px);box-shadow:0 16px 56px rgba(0,0,0,.6);overflow:hidden;display:flex;flex-direction:column;animation:ci .3s var(--ease) both;}
-.chat-hd{padding:11px 13px 10px;border-bottom:1px solid rgba(232,82,122,.12);display:flex;align-items:center;justify-content:space-between;}
-.chat-hd-title{font-family:var(--font-r);font-size:14px;font-weight:700;}
-.chat-hd-sub{font-size:10px;color:var(--fg3);margin-top:1px;}
-.chat-x{width:23px;height:23px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;color:var(--fg3);}
-.chat-msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:7px;max-height:200px;min-height:50px;}
-.chat-msgs::-webkit-scrollbar{width:2px;}
-.chat-msgs::-webkit-scrollbar-thumb{background:rgba(232,82,122,.3);border-radius:2px;}
-.chat-msg{max-width:85%;padding:7px 11px;border-radius:14px;font-size:12px;line-height:1.5;animation:su .25s var(--ease) both;}
-.chat-msg.mine{align-self:flex-end;background:linear-gradient(135deg,var(--rose),var(--rose-lo));color:#fff;border-bottom-right-radius:3px;}
-.chat-msg.theirs{align-self:flex-start;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.10);border-bottom-left-radius:3px;}
-.chat-msg-from{font-size:9px;font-weight:600;opacity:.6;margin-bottom:2px;letter-spacing:.04em;text-transform:uppercase;}
-.chat-empty{font-size:12px;color:var(--fg3);text-align:center;padding:14px 0;line-height:1.7;}
-.chat-input-row{display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(232,82,122,.10);}
-.chat-input{flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(232,82,122,.18);border-radius:11px;padding:8px 10px;color:var(--fg);font-family:var(--font-b);font-size:12px;outline:none;}
-.chat-input:focus{border-color:rgba(232,82,122,.5);}
-.chat-input::placeholder{color:var(--fg3);}
-.chat-send{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--rose),var(--rose-lo));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:transform .18s var(--spring);}
+/* chat panel */
+.chat{position:fixed;bottom:66px;right:18px;z-index:902;width:min(280px,86vw);background:rgba(17,15,23,.97);border:1px solid var(--line2);border-radius:20px;backdrop-filter:blur(26px);box-shadow:0 14px 50px rgba(0,0,0,.6);overflow:hidden;display:flex;flex-direction:column;animation:fadeup .25s var(--ease) both;}
+.chat-hd{padding:10px 12px 9px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;}
+.chat-hd-t{font-family:var(--serif);font-size:13px;font-weight:700;}
+.chat-hd-s{font-size:10px;color:var(--fg3);}
+.chat-x{width:21px;height:21px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:9px;color:var(--fg3);}
+.chat-body{flex:1;overflow-y:auto;padding:9px;display:flex;flex-direction:column;gap:6px;max-height:180px;min-height:40px;}
+.chat-bubble{max-width:85%;padding:6px 10px;border-radius:13px;font-size:11px;line-height:1.55;animation:fadeup .2s var(--ease) both;}
+.chat-bubble.me{align-self:flex-end;background:linear-gradient(135deg,var(--rose),var(--rose2));color:#fff;border-bottom-right-radius:3px;}
+.chat-bubble.them{align-self:flex-start;background:rgba(255,255,255,.08);border:1px solid var(--line);border-bottom-left-radius:3px;}
+.chat-who{font-size:8.5px;font-weight:700;opacity:.55;margin-bottom:2px;letter-spacing:.04em;text-transform:uppercase;}
+.chat-empty{font-size:11px;color:var(--fg3);text-align:center;padding:12px 0;line-height:1.7;}
+.chat-input-row{display:flex;gap:5px;padding:7px 9px;border-top:1px solid var(--line);}
+.chat-inp{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--line2);border-radius:10px;padding:7px 9px;color:var(--fg);font-family:var(--sans);font-size:11px;outline:none;}
+.chat-inp:focus{border-color:rgba(224,93,123,.45);}
+.chat-inp::placeholder{color:var(--fg3);}
+.chat-send{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--rose),var(--rose2));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:transform .18s var(--spring);}
 .chat-send:hover:not(:disabled){transform:scale(1.08);}
-.chat-send:disabled{opacity:.32;cursor:not-allowed;}
-.chat-voice-btn{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(232,82,122,.25);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:transform .18s var(--spring);}
-.chat-voice-btn.recording{background:rgba(232,82,122,.25);border-color:rgba(232,82,122,.6);animation:kiss-pulse 1s ease-in-out infinite;}
-.voice-player{display:flex;align-items:center;gap:8px;}
-.voice-play-btn{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.voice-waveform{flex:1;height:24px;display:flex;align-items:center;gap:2px;}
-.voice-bar{flex:1;max-width:3px;border-radius:2px;background:rgba(255,255,255,.35);transition:height .1s;}
-.voice-duration{font-size:10px;opacity:.7;white-space:nowrap;}
+.chat-send:disabled{opacity:.3;cursor:not-allowed;}
+.chat-mic{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.07);border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;flex-shrink:0;transition:background .2s;}
+.chat-mic.rec{background:rgba(224,93,123,.25);border-color:rgba(224,93,123,.55);animation:kanim 1s ease-in-out infinite;}
+.voice-play{display:flex;align-items:center;gap:7px;}
+.vp-btn{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.vp-bars{flex:1;height:22px;display:flex;align-items:center;gap:1.5px;}
+.vp-bar{flex:1;max-width:3px;border-radius:2px;background:rgba(255,255,255,.3);transition:height .1s;}
+.vp-dur{font-size:9px;opacity:.6;white-space:nowrap;}
 
-/* ── VIBE ── */
-.vibe-panel{position:fixed;bottom:68px;left:50%;transform:translateX(-50%);z-index:901;background:rgba(20,12,18,.96);border:1px solid rgba(232,82,122,.22);border-radius:22px;padding:14px 16px 12px;backdrop-filter:blur(20px);box-shadow:0 16px 48px rgba(0,0,0,.6);animation:ci .3s var(--ease) both;min-width:220px;}
-.vibe-panel-title{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--fg3);margin-bottom:10px;text-align:center;}
-.vibe-opts{display:flex;flex-direction:column;gap:6px;}
-.vibe-opt{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:13px;border:1px solid rgba(255,255,255,.07);cursor:pointer;transition:background .18s,transform .18s var(--spring);}
-.vibe-opt:hover{background:rgba(255,255,255,.06);transform:scale(1.02);}
-.vibe-opt-emoji{font-size:18px;flex-shrink:0;}
-.vibe-opt-label{font-size:13px;font-weight:500;color:var(--fg2);}
-.vibe-opt-hint{font-size:10px;color:var(--fg3);margin-top:1px;}
-.vibe-ripple{position:fixed;inset:0;z-index:970;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;}
-.vibe-ripple-ring{position:absolute;border-radius:50%;border:2px solid var(--vibe-color,rgba(232,82,122,.6));animation:vr var(--vd,.9s) ease-out forwards;}
-@keyframes vr{0%{width:0;height:0;opacity:.9;transform:translate(-50%,-50%)}100%{width:80vmax;height:80vmax;opacity:0;transform:translate(-50%,-50%)}}
-.vibe-ripple-icon{font-size:52px;animation:vri .45s var(--spring) both;filter:drop-shadow(0 0 28px var(--vibe-color,rgba(232,82,122,.8)));}
-@keyframes vri{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.25)}100%{transform:scale(1);opacity:1}}
-.vibe-ripple-text{font-family:var(--font-r);font-size:clamp(18px,4vw,26px);font-weight:700;color:var(--fg);animation:su .5s var(--ease) .1s both;}
-.vibe-ripple-sub{font-size:13px;color:var(--fg3);animation:su .5s var(--ease) .25s both;}
+/* ── SECTIONS ── */
+.page{height:100svh;overflow-y:auto;position:relative;}
 
-/* ── REACTIONS ── */
-.react-panel{position:fixed;bottom:68px;left:50%;transform:translateX(-50%);z-index:901;display:flex;gap:7px;background:rgba(20,12,18,.93);border:1px solid rgba(232,82,122,.22);border-radius:999px;padding:9px 14px;backdrop-filter:blur(18px);animation:ci .3s var(--ease) both;}
-.react-em{font-size:22px;cursor:pointer;transition:transform .18s var(--spring);}
-.react-em:hover{transform:scale(1.35);}
-.float-react{position:fixed;pointer-events:none;z-index:960;font-size:var(--fs,30px);animation:fr var(--dur,2.4s) var(--ease) forwards;}
-@keyframes fr{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.3)}100%{opacity:0;transform:translate(-50%,calc(-50% - 110px)) scale(.7)}}
+/* hero */
+.hero{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px clamp(20px,5vw,60px) 100px;position:relative;}
+.hero-bg{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 50% at 50% 28%,rgba(224,93,123,.10) 0%,transparent 58%),radial-gradient(ellipse 45% 35% at 75% 75%,rgba(201,164,78,.07) 0%,transparent 52%);}
+.hero-eyebrow{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--rose);margin-bottom:14px;display:block;}
+.hero-h{font-family:var(--serif);font-size:clamp(52px,10vw,120px);font-weight:700;letter-spacing:-.04em;line-height:.92;margin-bottom:12px;background:linear-gradient(160deg,var(--fg) 35%,rgba(240,235,232,.4));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hero-sub{font-family:var(--italic);font-size:clamp(15px,2.3vw,22px);font-style:italic;font-weight:300;color:var(--fg2);margin-bottom:34px;max-width:440px;}
+.hero-stats{display:flex;gap:clamp(20px,5vw,56px);justify-content:center;flex-wrap:wrap;margin-bottom:44px;}
+.hero-stat-n{font-family:var(--serif);font-size:clamp(32px,5.5vw,56px);font-weight:700;letter-spacing:-.04em;line-height:1;color:rgba(224,93,123,.9);}
+.hero-stat-l{font-size:10px;color:var(--fg3);margin-top:3px;letter-spacing:.07em;text-transform:uppercase;}
+.hero-btns{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;}
+.btn-filled{padding:12px 26px;border-radius:999px;background:linear-gradient(135deg,var(--rose),var(--rose2));color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;border:none;cursor:pointer;box-shadow:0 5px 20px rgba(224,93,123,.28);transition:opacity .18s,transform .18s var(--spring);}
+.btn-outline{padding:12px 26px;border-radius:999px;background:transparent;color:var(--fg2);font-family:var(--sans);font-size:13px;font-weight:500;border:1.5px solid rgba(255,255,255,.16);cursor:pointer;transition:opacity .18s,transform .18s var(--spring);}
+.btn-filled:hover,.btn-outline:hover{opacity:.84;transform:scale(1.02);}
+.scroll-cue{position:absolute;bottom:86px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:5px;animation:slideup 1s var(--ease) 2s both;}
+.scroll-cue-line{width:1px;height:38px;background:linear-gradient(180deg,transparent,var(--rose));animation:shline 1.8s ease-in-out infinite;}
+@keyframes shline{0%,100%{opacity:.25;transform:scaleY(.5)}50%{opacity:.9;transform:scaleY(1)}}
 
-/* ── KISS ── */
-.kiss-overlay{position:fixed;inset:0;z-index:950;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;}
-.kiss-counter{background:rgba(20,12,18,.92);border:1px solid rgba(232,82,122,.35);border-radius:24px;padding:18px 32px;text-align:center;backdrop-filter:blur(20px);animation:ci .4s var(--ease) both;box-shadow:0 0 60px rgba(232,82,122,.25);}
-.kiss-emoji{font-size:44px;display:block;margin-bottom:8px;animation:hb 1s ease-in-out infinite;}
-.kiss-time{font-family:var(--font-d);font-size:52px;font-weight:700;letter-spacing:-.04em;line-height:1;background:linear-gradient(135deg,var(--rose-hi),var(--rose));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.kiss-label{font-size:12px;color:var(--fg3);margin-top:4px;letter-spacing:.06em;text-transform:uppercase;}
-.kiss-waiting{font-size:13px;color:var(--fg3);background:rgba(20,12,18,.88);border:1px solid rgba(232,82,122,.20);border-radius:20px;padding:12px 22px;text-align:center;backdrop-filter:blur(16px);}
-.kiss-waiting strong{color:var(--rose-hi);}
-.last-kiss-toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:910;background:rgba(20,12,18,.94);border:1px solid rgba(232,82,122,.30);border-radius:14px;padding:10px 20px;font-size:13px;color:var(--fg2);animation:su .35s var(--ease) both,ft 2.5s var(--ease) 1.5s forwards;pointer-events:none;white-space:nowrap;display:flex;align-items:center;gap:8px;}
-@keyframes ft{from{opacity:1}to{opacity:0}}
-.last-kiss-toast strong{color:var(--rose-hi);}
+/* section layout */
+.sec{padding:clamp(60px,9vw,110px) clamp(20px,5vw,56px);}
+.sec-inner{max-width:860px;margin:0 auto;text-align:center;}
+.eyebrow{font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--rose);display:block;margin-bottom:11px;}
+.sec-h{font-family:var(--serif);font-size:clamp(26px,4.8vw,52px);font-weight:700;letter-spacing:-.03em;line-height:1.06;margin-bottom:10px;}
+.sec-h em{font-family:var(--italic);font-style:italic;color:var(--fg2);}
+.sec-p{font-size:clamp(13px,1.7vw,16px);font-weight:300;color:var(--fg2);line-height:1.75;max-width:480px;margin:0 auto 36px;}
+.hr{height:1px;background:linear-gradient(90deg,transparent,var(--line2),transparent);margin:0 clamp(18px,5vw,56px);}
 
-/* ── SURPRISE ── */
-.surprise-wrap{position:fixed;inset:0;z-index:990;display:flex;align-items:center;justify-content:center;background:rgba(13,8,16,.96);backdrop-filter:blur(8px);animation:ci .6s var(--ease) both;}
-.surprise-card{width:min(390px,90vw);background:var(--card);border:1px solid rgba(232,82,122,.25);border-radius:32px;padding:44px 32px 36px;text-align:center;box-shadow:0 40px 100px rgba(0,0,0,.8);animation:rp .7s var(--spring) .2s both;position:relative;overflow:hidden;}
-.surprise-hearts{font-size:32px;display:block;margin-bottom:16px;animation:hb 2s ease-in-out infinite;}
-.surprise-title{font-family:var(--font-r);font-size:clamp(19px,4.5vw,27px);font-weight:700;letter-spacing:-.02em;margin-bottom:12px;color:var(--rose-hi);}
-.surprise-msg{font-family:var(--font-d);font-size:clamp(14px,2.3vw,20px);font-style:italic;font-weight:300;color:var(--fg2);line-height:1.75;margin-bottom:22px;}
-.surprise-from{font-size:11px;color:var(--fg3);letter-spacing:.08em;margin-bottom:20px;}
-.surprise-btn{padding:11px 28px;border-radius:999px;background:linear-gradient(135deg,var(--rose),var(--rose-lo));color:#fff;font-family:var(--font-b);font-size:13px;font-weight:600;border:none;cursor:pointer;transition:transform .18s var(--spring);}
-.surprise-btn:hover{transform:scale(1.04);}
+/* love timer */
+.ltd{display:flex;gap:clamp(10px,2.5vw,28px);justify-content:center;flex-wrap:wrap;margin-bottom:28px;}
+.ltd-unit{text-align:center;}
+.ltd-n{font-family:var(--serif);font-size:clamp(40px,7.5vw,80px);font-weight:700;letter-spacing:-.04em;line-height:1;background:linear-gradient(135deg,rgba(224,93,123,.9),var(--rose2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.ltd-l{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--fg3);margin-top:3px;}
+.ltd-col{font-family:var(--serif);font-size:clamp(36px,6.5vw,70px);font-weight:300;color:rgba(224,93,123,.2);line-height:1;align-self:flex-start;margin-top:2px;}
+.date-row{display:inline-flex;align-items:center;gap:12px;background:rgba(255,255,255,.03);border:1px solid var(--line2);border-radius:var(--r16);padding:14px 20px;}
+.date-row-l{font-size:11px;color:var(--fg3);}
+.date-inp{background:transparent;border:none;color:rgba(224,93,123,.85);font-family:var(--sans);font-size:13px;font-weight:600;outline:none;cursor:pointer;}
+.date-inp::-webkit-calendar-picker-indicator{filter:invert(.4) sepia(1) saturate(2) hue-rotate(280deg);cursor:pointer;}
+.milestones{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px;}
+.ms{padding:5px 14px;border-radius:999px;font-size:11px;font-weight:500;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--fg3);}
+.ms.hit{background:rgba(224,93,123,.1);border-color:rgba(224,93,123,.25);color:rgba(224,93,123,.8);}
 
-/* ── PARTNER BAR ── */
-.partner-bar{position:fixed;right:6px;top:0;bottom:0;width:3px;z-index:800;pointer-events:none;}
-.partner-bar-track{position:absolute;inset:0;background:rgba(232,82,122,.06);border-radius:3px;}
-.partner-bar-thumb{position:absolute;left:0;right:0;height:36px;border-radius:3px;background:linear-gradient(180deg,var(--rose-hi),var(--rose-lo));box-shadow:0 0 10px rgba(232,82,122,.5);transition:top .4s var(--ease);}
-.partner-cursor{position:fixed;pointer-events:none;z-index:950;transition:left .15s linear,top .15s linear;}
-.partner-cursor-dot{width:13px;height:13px;border-radius:50%;background:var(--rose);box-shadow:0 0 14px rgba(232,82,122,.8);border:2px solid rgba(255,255,255,.5);}
-.partner-cursor-lbl{margin-top:5px;margin-left:4px;background:rgba(20,12,18,.88);border:1px solid rgba(232,82,122,.25);border-radius:8px;padding:2px 8px;font-size:11px;color:var(--fg2);white-space:nowrap;}
+/* calendar */
+.cal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:11px;margin-bottom:20px;text-align:left;}
+.cal-card{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--r16);padding:14px 16px;transition:border-color .25s,transform .2s var(--spring);animation:fadeup .3s var(--ease) both;}
+.cal-card:hover{border-color:var(--line2);transform:translateY(-2px);}
+.cal-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
+.cal-em{font-size:20px;}
+.cal-date{font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--gold);text-transform:uppercase;}
+.cal-t{font-size:14px;font-weight:600;color:var(--fg);line-height:1.3;}
+.cal-desc{font-size:11px;color:var(--fg3);margin-top:3px;line-height:1.5;}
+.cal-cd{font-size:10px;margin-top:8px;font-weight:600;}
+.cal-cd.soon{color:var(--rose);}
+.cal-cd.near{color:var(--gold);}
+.cal-cd.far{color:var(--fg3);}
+.cal-cd.today{color:var(--green);}
+.add-form{display:flex;flex-direction:column;gap:7px;max-width:480px;margin-inline:auto;margin-top:8px;}
+.row{display:flex;gap:7px;}
+.em-row{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;}
+.em-opt{font-size:17px;cursor:pointer;padding:4px;border-radius:8px;transition:background .18s,transform .18s var(--spring);}
+.em-opt:hover{background:rgba(255,255,255,.08);transform:scale(1.2);}
+.em-opt.sel{background:rgba(224,93,123,.18);}
+.add-inp{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:var(--r12);padding:10px 12px;color:var(--fg);font-family:var(--sans);font-size:13px;outline:none;transition:border-color .2s;}
+.add-inp:focus{border-color:rgba(224,93,123,.48);}
+.add-inp::placeholder{color:var(--fg3);}
+.add-inp-date{color:var(--fg2);}
+.add-inp-date::-webkit-calendar-picker-indicator{filter:invert(.4);}
+.add-btn{padding:10px 20px;border-radius:var(--r12);background:linear-gradient(135deg,var(--rose),var(--rose2));color:#fff;font-family:var(--sans);font-size:12px;font-weight:600;border:none;cursor:pointer;white-space:nowrap;transition:opacity .18s,transform .18s var(--spring);}
+.add-btn:hover:not(:disabled){opacity:.86;transform:scale(1.02);}
+.add-btn:disabled{opacity:.25;cursor:not-allowed;}
 
-/* ── FOOTER ── */
-.lfoot{border-top:1px solid rgba(255,255,255,.06);padding:30px clamp(20px,5vw,60px);text-align:center;}
-.foot-copy{font-size:11px;color:rgba(255,255,255,.15);line-height:1.7;}
+/* moments */
+.moments-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:11px;margin-bottom:20px;text-align:left;}
+.mom-card{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--r16);padding:14px 16px;animation:fadeup .3s var(--ease) both;transition:border-color .25s,transform .2s var(--spring);}
+.mom-card:hover{border-color:var(--line2);transform:translateY(-2px);}
+.mom-em{font-size:18px;display:block;margin-bottom:6px;}
+.mom-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.mom-who{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(224,93,123,.65);}
+.mom-date{font-size:9px;color:var(--fg3);}
+.mom-txt{font-size:12.5px;color:var(--fg2);line-height:1.65;}
+.mom-tag{display:inline-block;margin-top:7px;padding:2px 8px;border-radius:6px;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+.mom-tag.happy{background:rgba(224,93,123,.12);color:rgba(224,93,123,.8);}
+.mom-tag.tender{background:rgba(201,164,78,.12);color:rgba(201,164,78,.8);}
+.mom-tag.funny{background:rgba(91,191,212,.12);color:rgba(91,191,212,.8);}
+.mom-tag.important{background:rgba(191,90,242,.12);color:rgba(191,90,242,.8);}
+.tag-picker{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;}
+.tag-opt{padding:5px 12px;border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;}
+.tag-opt.happy{background:rgba(224,93,123,.07);color:rgba(224,93,123,.7);border-color:rgba(224,93,123,.15);}
+.tag-opt.tender{background:rgba(201,164,78,.07);color:rgba(201,164,78,.7);border-color:rgba(201,164,78,.15);}
+.tag-opt.funny{background:rgba(91,191,212,.07);color:rgba(91,191,212,.7);border-color:rgba(91,191,212,.15);}
+.tag-opt.important{background:rgba(191,90,242,.07);color:rgba(191,90,242,.7);border-color:rgba(191,90,242,.15);}
+.tag-opt.sel{transform:scale(1.06);box-shadow:0 0 10px rgba(255,255,255,.08);}
 
-/* ── WISHES ── */
-.wishes-tabs{display:inline-flex;background:rgba(255,255,255,.05);border:1px solid rgba(232,82,122,.12);border-radius:14px;padding:3px;gap:2px;margin-bottom:28px;}
-.wish-tab{padding:7px 18px;border-radius:11px;font-size:12px;font-weight:600;color:var(--fg3);cursor:pointer;transition:all .22s;}
-.wish-tab.active{background:rgba(232,82,122,.22);color:var(--rose-hi);border:1px solid rgba(232,82,122,.3);}
-.wishes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:20px;text-align:left;}
-.wish-card{border-radius:16px;padding:14px 16px;animation:su .3s var(--ease) both;transition:transform .2s var(--spring),border-color .2s;}
+/* dreams */
+.dreams-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px;text-align:left;}
+@media(max-width:560px){.dreams-cols{grid-template-columns:1fr;}}
+.dream-col{background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:var(--r20);padding:18px;}
+.dream-col-h{font-family:var(--serif);font-size:15px;font-weight:700;margin-bottom:13px;display:flex;align-items:center;gap:7px;}
+.dream-item{display:flex;align-items:flex-start;gap:9px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.dream-item:last-of-type{border-bottom:none;}
+.dream-star{font-size:13px;flex-shrink:0;margin-top:1px;}
+.dream-text{font-size:12.5px;color:var(--fg2);line-height:1.55;flex:1;}
+.dream-done{text-decoration:line-through;opacity:.4;}
+.dream-check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--line2);background:transparent;cursor:pointer;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:background .2s,border-color .2s;}
+.dream-check.done{background:var(--green);border-color:var(--green);}
+.dream-add-row{display:flex;gap:6px;margin-top:12px;}
+
+/* wishes */
+.wish-tabs{display:inline-flex;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:var(--r12);padding:3px;gap:2px;margin-bottom:24px;}
+.wish-tab{padding:6px 16px;border-radius:10px;font-size:11px;font-weight:600;color:var(--fg3);cursor:pointer;transition:all .2s;}
+.wish-tab.on{background:rgba(224,93,123,.18);color:rgba(224,93,123,.9);border:1px solid rgba(224,93,123,.25);}
+.wishes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:20px;text-align:left;}
+.wish-card{border-radius:var(--r16);padding:13px 15px;animation:fadeup .3s var(--ease) both;transition:transform .2s var(--spring),border-color .2s;}
 .wish-card:hover{transform:scale(1.02);}
-.wish-card.mine{background:rgba(232,82,122,.07);border:1px solid rgba(232,82,122,.18);}
-.wish-card.theirs{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);}
-.wish-card.done{opacity:.5;filter:grayscale(.4);}
-.wish-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
-.wish-emoji{font-size:20px;}
-.wish-by{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:rgba(232,82,122,.6);}
-.wish-title{font-size:14px;font-weight:600;color:var(--fg);line-height:1.35;}
-.wish-desc{font-size:11px;color:var(--fg3);margin-top:4px;line-height:1.5;}
-.wish-fulfill{margin-top:10px;padding:5px 12px;border-radius:8px;background:linear-gradient(135deg,var(--rose),var(--rose-lo));color:#fff;font-size:11px;font-weight:600;border:none;cursor:pointer;transition:opacity .18s;}
-.wish-fulfill:hover{opacity:.85;}
-.wish-done-badge{margin-top:10px;font-size:10px;color:var(--green);font-weight:600;}
+.wish-card.mine{background:rgba(224,93,123,.06);border:1px solid rgba(224,93,123,.15);}
+.wish-card.theirs{background:rgba(255,255,255,.03);border:1px solid var(--line);}
+.wish-card.done{opacity:.45;filter:grayscale(.5);}
+.wish-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.wish-by{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(224,93,123,.55);}
+.wish-t{font-size:13.5px;font-weight:600;line-height:1.3;}
+.wish-d{font-size:11px;color:var(--fg3);margin-top:3px;line-height:1.5;}
+.wish-prio{display:inline-block;margin-top:6px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.05em;}
+.wish-prio.high{background:rgba(224,93,123,.12);color:rgba(224,93,123,.8);}
+.wish-prio.med{background:rgba(201,164,78,.12);color:rgba(201,164,78,.8);}
+.wish-prio.low{background:rgba(255,255,255,.06);color:var(--fg3);}
+.wish-fulfill{margin-top:10px;padding:5px 11px;border-radius:8px;background:linear-gradient(135deg,var(--rose),var(--rose2));color:#fff;font-size:10px;font-weight:600;border:none;cursor:pointer;transition:opacity .18s;}
+.wish-fulfill:hover{opacity:.82;}
+.wish-done-lbl{margin-top:8px;font-size:10px;color:var(--green);font-weight:600;}
+.prio-picker{display:flex;gap:5px;justify-content:center;}
+.prio-opt{padding:5px 13px;border-radius:999px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;}
+.prio-opt.high{background:rgba(224,93,123,.07);color:rgba(224,93,123,.65);border-color:rgba(224,93,123,.14);}
+.prio-opt.med{background:rgba(201,164,78,.07);color:rgba(201,164,78,.65);border-color:rgba(201,164,78,.14);}
+.prio-opt.low{background:rgba(255,255,255,.04);color:var(--fg3);border-color:var(--line);}
+.prio-opt.sel{transform:scale(1.06);box-shadow:0 0 10px rgba(255,255,255,.07);}
 
-/* ── DREAMS ── */
-.dreams-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:28px;text-align:left;}
-@media(max-width:600px){.dreams-cols{grid-template-columns:1fr;}}
-.dreams-col{background:rgba(255,255,255,.02);border:1px solid rgba(232,82,122,.10);border-radius:20px;padding:20px;}
-.dreams-col-title{font-family:var(--font-r);font-size:16px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
-.dreams-col-title span{font-size:18px;}
-.dream-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);}
-.dream-item:last-child{border-bottom:none;}
-.dream-star{font-size:14px;flex-shrink:0;margin-top:1px;}
-.dream-text{font-size:13px;color:var(--fg2);line-height:1.55;flex:1;}
-.dream-add{display:flex;gap:6px;margin-top:14px;}
-.dream-input{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(232,82,122,.14);border-radius:10px;padding:9px 11px;color:var(--fg);font-family:var(--font-b);font-size:12px;outline:none;}
-.dream-input:focus{border-color:rgba(232,82,122,.45);}
-.dream-input::placeholder{color:var(--fg3);}
-
-/* ── TRAVEL ── */
-.travel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:28px;text-align:left;}
-.travel-card{border-radius:18px;padding:16px 18px;animation:su .3s var(--ease) both;position:relative;overflow:hidden;transition:transform .2s var(--spring);}
+/* travel */
+.travel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:11px;margin-bottom:20px;text-align:left;}
+.travel-card{border-radius:var(--r16);padding:15px 16px;animation:fadeup .3s var(--ease) both;cursor:pointer;transition:transform .2s var(--spring);}
 .travel-card:hover{transform:scale(1.02);}
-.travel-card.dream{background:rgba(100,210,255,.06);border:1px solid rgba(100,210,255,.15);}
-.travel-card.planning{background:rgba(212,168,83,.07);border:1px solid rgba(212,168,83,.20);}
-.travel-card.done{background:rgba(48,209,88,.06);border:1px solid rgba(48,209,88,.18);}
-.travel-status{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:3px 9px;border-radius:999px;margin-bottom:9px;}
-.travel-status.dream{background:rgba(100,210,255,.12);color:var(--teal);}
-.travel-status.planning{background:rgba(212,168,83,.15);color:var(--gold);}
-.travel-status.done{background:rgba(48,209,88,.12);color:var(--green);}
-.travel-flag{font-size:28px;display:block;margin-bottom:6px;}
-.travel-place{font-size:15px;font-weight:700;color:var(--fg);line-height:1.3;}
-.travel-note{font-size:11px;color:var(--fg3);margin-top:4px;line-height:1.5;}
-.travel-who{font-size:9px;color:rgba(232,82,122,.5);font-weight:600;margin-top:8px;text-transform:uppercase;letter-spacing:.05em;}
-.travel-add{display:flex;flex-direction:column;gap:8px;margin-top:20px;max-width:500px;margin-inline:auto;}
-.travel-status-picker{display:flex;gap:6px;justify-content:center;}
-.travel-status-opt{padding:6px 14px;border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;}
-.travel-status-opt.dream{background:rgba(100,210,255,.08);color:var(--teal);border-color:rgba(100,210,255,.15);}
-.travel-status-opt.planning{background:rgba(212,168,83,.08);color:var(--gold);border-color:rgba(212,168,83,.15);}
-.travel-status-opt.done{background:rgba(48,209,88,.08);color:var(--green);border-color:rgba(48,209,88,.15);}
-.travel-status-opt.selected{transform:scale(1.06);box-shadow:0 0 14px rgba(255,255,255,.1);}
+.travel-card.dream{background:rgba(91,191,212,.05);border:1px solid rgba(91,191,212,.14);}
+.travel-card.planning{background:rgba(201,164,78,.06);border:1px solid rgba(201,164,78,.18);}
+.travel-card.been{background:rgba(39,196,110,.05);border:1px solid rgba(39,196,110,.16);}
+.travel-stat-badge{display:inline-block;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border-radius:999px;margin-bottom:8px;}
+.travel-stat-badge.dream{background:rgba(91,191,212,.1);color:var(--teal);}
+.travel-stat-badge.planning{background:rgba(201,164,78,.12);color:var(--gold);}
+.travel-stat-badge.been{background:rgba(39,196,110,.1);color:var(--green);}
+.travel-flag{font-size:26px;display:block;margin-bottom:5px;}
+.travel-place{font-size:14px;font-weight:700;line-height:1.3;}
+.travel-note{font-size:11px;color:var(--fg3);margin-top:3px;line-height:1.5;}
+.travel-who{font-size:9px;color:rgba(224,93,123,.45);font-weight:600;margin-top:7px;text-transform:uppercase;letter-spacing:.05em;}
+.travel-hint{font-size:9.5px;color:var(--fg3);margin-top:5px;font-style:italic;}
+.status-picker{display:flex;gap:5px;justify-content:center;}
+.sopt{padding:5px 12px;border-radius:999px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;}
+.sopt.dream{background:rgba(91,191,212,.07);color:var(--teal);border-color:rgba(91,191,212,.14);}
+.sopt.planning{background:rgba(201,164,78,.07);color:var(--gold);border-color:rgba(201,164,78,.14);}
+.sopt.been{background:rgba(39,196,110,.07);color:var(--green);border-color:rgba(39,196,110,.14);}
+.sopt.sel{transform:scale(1.06);}
+.travel-counts{display:flex;gap:16px;justify-content:center;margin-bottom:24px;flex-wrap:wrap;}
+.tcount{text-align:center;}
+.tcount-n{font-family:var(--serif);font-size:32px;font-weight:700;letter-spacing:-.03em;}
+.tcount-n.dream{color:var(--teal);}
+.tcount-n.planning{color:var(--gold);}
+.tcount-n.been{color:var(--green);}
+.tcount-l{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--fg3);margin-top:2px;}
 
+/* promises */
+.prom-list{display:flex;flex-direction:column;gap:8px;max-width:600px;margin-inline:auto;margin-bottom:20px;text-align:left;}
+.prom-item{display:flex;align-items:flex-start;gap:11px;padding:13px 15px;border-radius:var(--r16);border:1px solid var(--line);background:rgba(255,255,255,.02);animation:fadeup .3s var(--ease) both;transition:border-color .2s,transform .2s var(--spring);}
+.prom-item:hover{border-color:var(--line2);transform:translateX(3px);}
+.prom-em{font-size:17px;flex-shrink:0;margin-top:1px;}
+.prom-content{flex:1;}
+.prom-text{font-size:13.5px;color:var(--fg2);line-height:1.6;}
+.prom-who{font-size:9px;color:rgba(224,93,123,.5);font-weight:600;margin-top:3px;text-transform:uppercase;letter-spacing:.05em;}
+.prom-check{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line2);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;margin-top:1px;}
+.prom-check.done{background:var(--rose);border-color:var(--rose);}
+.prom-add-row{display:flex;gap:7px;max-width:600px;margin-inline:auto;}
+
+/* footer */
+.foot{border-top:1px solid var(--line);padding:26px clamp(20px,5vw,56px);text-align:center;}
+.foot-t{font-size:10px;color:rgba(255,255,255,.12);line-height:1.75;}
 `;
 
 /* ══════════════════════════════════════════════════════
    ATOMS
 ══════════════════════════════════════════════════════ */
+const VIBE_PATTERNS = [
+  {id:"tap",   emoji:"👆",label:"Лёгкое касание", pattern:[60],              color:"rgba(201,164,78,.8)"},
+  {id:"heart", emoji:"💓",label:"Сердцебиение",   pattern:[120,80,120],      color:"rgba(224,93,123,.8)"},
+  {id:"fire",  emoji:"🔥",label:"Страсть",        pattern:[200,80,200,80,400],color:"rgba(224,130,74,.8)"},
+  {id:"miss",  emoji:"💌",label:"Думаю о тебе",   pattern:[80,50,80,50,300],  color:"rgba(91,191,212,.8)"},
+];
+const REACTS = ["❤️","💕","🌹","😍","✨","🫶","💋","🥰","💖","🔥"];
+
 function Petals() {
-  return <>{Array.from({length:10},(_,i)=>(
-    <div key={i} className="petal" style={{left:`${5+Math.random()*90}%`,width:`${6+Math.random()*12}px`,height:`${4+Math.random()*9}px`,top:"-30px",background:["rgba(232,82,122,.18)","rgba(212,168,83,.14)","rgba(232,82,122,.10)"][i%3],animationDuration:`${10+Math.random()*18}s`,animationDelay:`${Math.random()*14}s`}}/>
+  return <>{Array.from({length:12},(_,i)=>(
+    <div key={i} className="petal" style={{left:`${5+Math.random()*90}%`,width:`${6+Math.random()*10}px`,height:`${4+Math.random()*8}px`,top:"-20px",background:["rgba(224,93,123,.15)","rgba(201,164,78,.12)","rgba(224,93,123,.08)"][i%3],animationDuration:`${12+Math.random()*16}s`,animationDelay:`${Math.random()*15}s`}}/>
   ))}</>;
 }
-function BurstHearts(){
-  return <div className="burst-hearts">{Array.from({length:24},(_,i)=>(
-    <div key={i} className="burst-heart-p" style={{left:`${5+Math.random()*90}%`,top:`${55+Math.random()*35}%`,fontSize:`${14+Math.random()*22}px`,"--r":`${Math.random()*60-30}deg`,animationDuration:`${2+Math.random()*2.5}s`,animationDelay:`${Math.random()*.9}s`}}>{"❤️💕🌹✨💖🫶💋🥰"[i%8]}</div>
+function BurstPetals() {
+  return <div className="burst-bg">{Array.from({length:22},(_,i)=>(
+    <div key={i} className="burst-p" style={{left:`${5+Math.random()*90}%`,top:`${55+Math.random()*35}%`,fontSize:`${14+Math.random()*20}px`,"--r":`${Math.random()*60-30}deg`,animationDuration:`${2+Math.random()*2.2}s`,animationDelay:`${Math.random()*.85}s`}}>{"❤️💕🌹✨💖🫶💋🥰"[i%8]}</div>
   ))}</div>;
 }
-function FloatReact({emoji,x,y,onDone}){
-  const dur=2.2+Math.random()*.8,fs=26+Math.random()*20;
+function FloatReact({emoji,x,y,onDone}) {
+  const dur = 2.2+Math.random()*.8, fs = 24+Math.random()*18;
   useEffect(()=>{const t=setTimeout(onDone,(dur+.1)*1000);return()=>clearTimeout(t);},[]);
-  return <div className="float-react" style={{left:x,top:y,"--fs":`${fs}px`,"--dur":`${dur}s`}}>{emoji}</div>;
+  return <div className="fr" style={{left:x,top:y,"--fs":`${fs}px`,"--dur":`${dur}s`}}>{emoji}</div>;
 }
-function MusicBars(){
-  return <div className="music-bars">{[11,6,10,4,9,7,12].map((h,i)=><div key={i} className="music-bar" style={{"--h":`${h}px`,"--d":`${.28+i*.1}s`}}/>)}</div>;
+function MusicBars() {
+  return <div className="music-bars">{[10,5,9,3,8,6,11].map((h,i)=><div key={i} className="mbar" style={{"--h":`${h}px`,"--d":`${.26+i*.09}s`}}/>)}</div>;
 }
-
-function TogetherTimer({connectedAt}){
-  const [e,setE]=useState(0);
-  useEffect(()=>{const iv=setInterval(()=>setE(Math.floor((Date.now()-connectedAt)/1000)),1000);return()=>clearInterval(iv);},[connectedAt]);
+function TogetherTimer({t0}) {
+  const [e,se]=useState(0);
+  useEffect(()=>{const iv=setInterval(()=>se(Math.floor((Date.now()-t0)/1000)),1000);return()=>clearInterval(iv);},[t0]);
   const m=Math.floor(e/60),s=e%60;
-  return <div className="timer-pill"><div className="timer-dot"/><span style={{color:"var(--fg3)"}}>Вместе</span><span className="timer-val">{String(m).padStart(2,"0")}:{String(s).padStart(2,"0")}</span></div>;
+  return <div className="together-pill"><div className="tpill-dot"/><span>Вместе</span><span className="tpill-val">{String(m).padStart(2,"0")}:{String(s).padStart(2,"0")}</span></div>;
 }
-
-/* ── Love timer (days/hours/minutes/seconds since start date) ── */
-function LoveTimer({ startDate }) {
-  const [diff, setDiff] = useState({});
-  useEffect(() => {
-    const calc = () => {
-      const ms = Date.now() - new Date(startDate).getTime();
-      if (ms < 0) { setDiff({}); return; }
-      const d = Math.floor(ms / 86400000);
-      const h = Math.floor((ms % 86400000) / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      const s = Math.floor((ms % 60000) / 1000);
-      setDiff({ d, h, m, s });
-    };
-    calc();
-    const iv = setInterval(calc, 1000);
-    return () => clearInterval(iv);
-  }, [startDate]);
-  if (!diff.d && diff.d !== 0) return null;
-  return (
-    <div className="love-timer-display">
-      {[["d","дней"],["h","часов"],["m","минут"],["s","секунд"]].map(([k,l],i,arr)=>(
-        <div key={k} style={{display:"flex",alignItems:"center",gap:i<arr.length-1?"clamp(12px,3vw,32px)":0}}>
-          <div className="ltd-unit">
-            <div className="ltd-n">{String(diff[k]).padStart(2,"0")}</div>
-            <div className="ltd-l">{l}</div>
-          </div>
-          {i<arr.length-1 && <div className="ltd-sep">:</div>}
-        </div>
-      ))}
-    </div>
-  );
+function LoveTimer({start}) {
+  const [d,sd]=useState({});
+  useEffect(()=>{
+    const calc=()=>{ const ms=Date.now()-new Date(start).getTime(); if(ms<0){sd({});return;} sd({d:Math.floor(ms/86400000),h:Math.floor(ms%86400000/3600000),m:Math.floor(ms%3600000/60000),s:Math.floor(ms%60000/1000)}); };
+    calc(); const iv=setInterval(calc,1000); return()=>clearInterval(iv);
+  },[start]);
+  if(!d.d&&d.d!==0) return null;
+  return <div className="ltd">{[["d","дней"],["h","часов"],["m","минут"],["s","секунд"]].map(([k,l],i,a)=>(<div key={k} style={{display:"flex",alignItems:"center",gap:i<a.length-1?"clamp(10px,2vw,28px)":0}}><div className="ltd-unit"><div className="ltd-n">{String(d[k]).padStart(2,"0")}</div><div className="ltd-l">{l}</div></div>{i<a.length-1&&<div className="ltd-col">:</div>}</div>))}</div>;
 }
-
-/* ── Voice player ── */
-function base64ToBlob(b64,type){const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new Blob([arr],{type});}
-function VoicePlayer({audioData,duration}){
-  const [playing,setPlaying]=useState(false);const audioRef=useRef(null);
-  useEffect(()=>{if(!audioData)return;const blob=base64ToBlob(audioData,"audio/webm");const url=URL.createObjectURL(blob);const audio=new Audio(url);audio.onended=()=>setPlaying(false);audioRef.current=audio;return()=>{audio.pause();URL.revokeObjectURL(url);};},[audioData]);
-  const toggle=()=>{const a=audioRef.current;if(!a)return;if(playing){a.pause();a.currentTime=0;setPlaying(false);}else{a.play();setPlaying(true);}};
-  const bars=Array.from({length:16},(_,i)=>Math.max(4,Math.sin(i*1.3+1)*10+Math.random()*6+4));
+const base64ToBlob=(b64,t)=>{const bin=atob(b64);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:t});};
+function VoicePlayer({data,dur}) {
+  const [p,sp]=useState(false);const ar=useRef(null);
+  useEffect(()=>{if(!data)return;const blob=base64ToBlob(data,"audio/webm");const url=URL.createObjectURL(blob);const audio=new Audio(url);audio.onended=()=>sp(false);ar.current=audio;return()=>{audio.pause();URL.revokeObjectURL(url);};},[data]);
+  const toggle=()=>{const a=ar.current;if(!a)return;if(p){a.pause();a.currentTime=0;sp(false);}else{a.play();sp(true);}};
+  const bars=Array.from({length:14},()=>Math.max(4,Math.sin(Math.random()*3)*10+Math.random()*6+4));
   const fmt=s=>`0:${String(Math.round(s||0)).padStart(2,"0")}`;
-  return <div className="voice-player">
-    <button className="voice-play-btn" onClick={toggle}>{playing?<svg width="10" height="10"><rect x="1" y="1" width="3" height="8" rx="1" fill="white"/><rect x="6" y="1" width="3" height="8" rx="1" fill="white"/></svg>:<svg width="10" height="10"><path d="M2 1l7 4-7 4V1z" fill="white"/></svg>}</button>
-    <div className="voice-waveform">{bars.map((h,i)=><div key={i} className="voice-bar" style={{height:playing?`${h}px`:"4px",background:playing?"rgba(255,255,255,.7)":"rgba(255,255,255,.3)"}}/>)}</div>
-    <span className="voice-duration">{fmt(duration)}</span>
-  </div>;
-}
-
-/* ── Surprise overlay ── */
-function SurpriseOverlay({from,message,onClose}){
-  return <div className="surprise-wrap" onClick={onClose}>
-    <div className="surprise-card" onClick={e=>e.stopPropagation()}>
-      <div style={{position:"absolute",inset:0,overflow:"hidden",borderRadius:32,pointerEvents:"none"}}><Petals/></div>
-      <span className="surprise-hearts">🌹</span>
-      <div className="surprise-title">Для тебя</div>
-      <div className="surprise-msg">"{message}"</div>
-      <div className="surprise-from">— с любовью, @{normalize(from)} 💕</div>
-      <button className="surprise-btn" onClick={onClose}>Обнять в ответ 🤗</button>
-    </div>
-  </div>;
-}
-
-/* ── Vibe components ── */
-function VibePanel({onSend}){
-  return <div className="vibe-panel"><div className="vibe-panel-title">Отправить вибрацию</div><div className="vibe-opts">{VIBE_PATTERNS.map(p=><div key={p.id} className="vibe-opt" onClick={()=>onSend(p)}><span className="vibe-opt-emoji">{p.emoji}</span><div><div className="vibe-opt-label">{p.label}</div><div className="vibe-opt-hint">{p.pattern.join("·")} мс</div></div></div>)}</div></div>;
-}
-function VibeRipple({vibe,partner,onDone}){
-  const p=VIBE_PATTERNS.find(x=>x.id===vibe.id)||VIBE_PATTERNS[0];
-  useEffect(()=>{const t=setTimeout(onDone,2400);return()=>clearTimeout(t);},[]);
-  return <div className="vibe-ripple" style={{"--vibe-color":p.color}}>{[0,350,700].map((delay,i)=><div key={i} className="vibe-ripple-ring" style={{position:"absolute",left:"50%",top:"50%","--vd":"1.6s",animationDelay:`${delay}ms`}}/>)}<div className="vibe-ripple-icon">{p.emoji}</div><div className="vibe-ripple-text">@{normalize(partner)}</div><div className="vibe-ripple-sub">{p.label}</div></div>;
-}
-
-/* ── Kiss overlay ── */
-function KissOverlay({myKissing,partnerKissing,kissStart,partner}){
-  const [elapsed,setElapsed]=useState(0);const both=myKissing&&partnerKissing;
-  useEffect(()=>{if(!both||!kissStart)return;const iv=setInterval(()=>setElapsed(Math.floor((Date.now()-kissStart)/1000)),100);return()=>clearInterval(iv);},[both,kissStart]);
-  if(!myKissing&&!partnerKissing)return null;
-  const fmt=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-  return <div className="kiss-overlay">{both?<div className="kiss-counter"><span className="kiss-emoji">💋</span><div className="kiss-time">{fmt(elapsed)}</div><div className="kiss-label">Держите…</div></div>:<div className="kiss-waiting">{myKissing?<>Ждём <strong>@{normalize(partner)}</strong>… зажми 💋</>:<><strong>@{normalize(partner)}</strong> ждёт тебя! Зажми 💋</>}</div>}</div>;
+  return <div className="voice-play"><button className="vp-btn" onClick={toggle}>{p?<svg width="9" height="9"><rect x="1" y="1" width="3" height="7" rx="1" fill="white"/><rect x="5" y="1" width="3" height="7" rx="1" fill="white"/></svg>:<svg width="9" height="9"><path d="M2 1l6 3.5-6 3.5V1z" fill="white"/></svg>}</button><div className="vp-bars">{bars.map((h,i)=><div key={i} className="vp-bar" style={{height:p?`${h}px`:"3px"}}/>)}</div><span className="vp-dur">{fmt(dur)}</span></div>;
 }
 
 /* ══════════════════════════════════════════════════════
    CALENDAR SECTION
 ══════════════════════════════════════════════════════ */
-const CAL_EMOJIS = ["💍","🌹","🎂","✈️","🏠","💑","🎁","⭐","🥂","🌙"];
-
-function daysUntil(dateStr) {
-  const now = new Date(); now.setHours(0,0,0,0);
-  const d = new Date(dateStr);
-  const next = new Date(now.getFullYear(), d.getMonth(), d.getDate());
-  if (next < now) next.setFullYear(now.getFullYear()+1);
-  return Math.round((next-now)/86400000);
-}
-
-function CalendarSection({ pair, me }) {
-  const [events, setEvents] = useState([]);
-  const [title, setTitle]   = useState("");
-  const [date, setDate]     = useState("");
-  const [desc, setDesc]     = useState("");
-  const [emoji, setEmoji]   = useState("💍");
-
-  useEffect(() => { loadCalendar(pair).then(setEvents); }, [pair]);
-  const pollRef = useRef(null);
-  useEffect(() => {
-    pollRef.current = setInterval(() => loadCalendar(pair).then(setEvents), 5000);
-    return () => clearInterval(pollRef.current);
-  }, [pair]);
-
-  const add = async () => {
-    if (!title.trim() || !date) return;
-    const ev = { id: Date.now(), title: title.trim(), date, desc: desc.trim(), emoji, addedBy: me };
-    const updated = [...events, ev].sort((a,b) => daysUntil(a.date) - daysUntil(b.date));
-    setEvents(updated);
-    await saveCalendar(pair, updated);
-    setTitle(""); setDate(""); setDesc("");
-  };
-
+const CAL_EMOJIS=["💍","🌹","🎂","✈️","🏠","💑","🎁","⭐","🥂","🌙","🎭","🌺"];
+function daysUntil(ds){const now=new Date();now.setHours(0,0,0,0);const d=new Date(ds);const nx=new Date(now.getFullYear(),d.getMonth(),d.getDate());if(nx<now)nx.setFullYear(now.getFullYear()+1);return Math.round((nx-now)/86400000);}
+function CalSec({pair,me}) {
+  const coll=dbColl("duo_calendar",pair);
+  const [evs,sEvs]=useState([]);
+  const [t,sT]=useState("");const [dt,sDt]=useState("");const [desc,sDesc]=useState("");const [em,sEm]=useState("💍");
+  useEffect(()=>{coll.load().then(sEvs);},[]);
+  useEffect(()=>{const iv=setInterval(()=>coll.load().then(sEvs),6000);return()=>clearInterval(iv);},[]);
+  const add=async()=>{if(!t.trim()||!dt)return;const ev={id:Date.now(),title:t.trim(),date:dt,desc:desc.trim(),emoji:em,by:me};const u=[...evs,ev].sort((a,b)=>daysUntil(a.date)-daysUntil(b.date));sEvs(u);await coll.save(u);sT("");sDt("");sDesc("");};
+  const cdClass=n=>n===0?"today":n<=7?"soon":n<=30?"near":"far";
+  const cdText=n=>n===0?"🎉 Сегодня!":n===1?"Завтра!":`через ${n} дн.`;
   return (
-    <div className="s-section" id="calendar">
-      <div className="s-center">
-        <span className="s-eyebrow">Важные даты</span>
-        <h2 className="s-h2">Наш <em>календарь</em></h2>
-        <p className="s-sub">Годовщины, путешествия, особые моменты — всё в одном месте для вас двоих.</p>
-
-        <div className="calendar-grid">
-          {events.length === 0 && (
-            <div style={{gridColumn:"1/-1",textAlign:"center",padding:"32px",color:"var(--fg3)",fontSize:13}}>
-              Добавьте первую важную дату 💍
-            </div>
-          )}
-          {events.map(ev => (
-            <div key={ev.id} className="cal-card">
-              <div className="cal-card-top">
-                <span className="cal-card-emoji">{ev.emoji}</span>
-                <span className="cal-card-date">{new Date(ev.date).toLocaleDateString("ru-RU",{day:"numeric",month:"long"})}</span>
-              </div>
-              <div className="cal-card-title">{ev.title}</div>
-              {ev.desc && <div className="cal-card-desc">{ev.desc}</div>}
-              <div className="cal-card-countdown">
-                {daysUntil(ev.date) === 0 ? "🎉 Сегодня!" : `через ${daysUntil(ev.date)} дн.`}
-              </div>
-            </div>
-          ))}
+    <div className="sec" id="calendar" style={{background:"rgba(255,255,255,.01)"}}>
+      <div className="sec-inner">
+        <span className="eyebrow">Важные даты</span>
+        <h2 className="sec-h">Наш <em>календарь</em></h2>
+        <p className="sec-p">Годовщины, путешествия, особые события — всё вместе.</p>
+        <div className="cal-grid">
+          {evs.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"28px",color:"var(--fg3)",fontSize:12}}>Добавьте первую важную дату 💍</div>}
+          {evs.map(ev=><div key={ev.id} className="cal-card"><div className="cal-card-top"><span className="cal-em">{ev.emoji}</span><span className="cal-date">{new Date(ev.date).toLocaleDateString("ru-RU",{day:"numeric",month:"short"})}</span></div><div className="cal-t">{ev.title}</div>{ev.desc&&<div className="cal-desc">{ev.desc}</div>}<div className={`cal-cd ${cdClass(daysUntil(ev.date))}`}>{cdText(daysUntil(ev.date))}</div></div>)}
         </div>
-
-        <div className="cal-add">
-          <div className="emoji-picker" style={{justifyContent:"center"}}>
-            {CAL_EMOJIS.map(e => <span key={e} className={`emoji-opt ${emoji===e?"selected":""}`} onClick={()=>setEmoji(e)}>{e}</span>)}
-          </div>
-          <div className="cal-row">
-            <input className="cal-input" placeholder="Название события" value={title} onChange={e=>setTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
-            <input className="cal-input cal-input-date" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:150,flexShrink:0}}/>
-          </div>
-          <div className="cal-row">
-            <input className="cal-input" placeholder="Описание (необязательно)" value={desc} onChange={e=>setDesc(e.target.value)}/>
-            <button className="cal-submit" disabled={!title.trim()||!date} onClick={add}>Добавить</button>
-          </div>
+        <div className="add-form">
+          <div className="em-row">{CAL_EMOJIS.map(e=><span key={e} className={`em-opt ${em===e?"sel":""}`} onClick={()=>sEm(e)}>{e}</span>)}</div>
+          <div className="row"><input className="add-inp" placeholder="Название события" value={t} onChange={e=>sT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><input className="add-inp add-inp-date" type="date" value={dt} onChange={e=>sDt(e.target.value)} style={{width:140,flexShrink:0}}/></div>
+          <div className="row"><input className="add-inp" placeholder="Описание (необязательно)" value={desc} onChange={e=>sDesc(e.target.value)}/><button className="add-btn" disabled={!t.trim()||!dt} onClick={add}>+ Добавить</button></div>
         </div>
       </div>
     </div>
@@ -642,63 +533,31 @@ function CalendarSection({ pair, me }) {
 /* ══════════════════════════════════════════════════════
    MOMENTS SECTION
 ══════════════════════════════════════════════════════ */
-const MOMENT_EMOJIS = ["🌹","💕","✨","😍","🥰","💋","🫶","🌙","☕","🎵","🌊","🏔️","🎭","💌","🎉"];
-
-function MomentsSection({ pair, me, partner }) {
-  const [moments, setMoments]   = useState([]);
-  const [text, setText]         = useState("");
-  const [emoji, setEmoji]       = useState("🌹");
-
-  useEffect(() => { loadMoments(pair).then(setMoments); }, [pair]);
-  useEffect(() => {
-    const iv = setInterval(() => loadMoments(pair).then(setMoments), 4000);
-    return () => clearInterval(iv);
-  }, [pair]);
-
-  const add = async () => {
-    if (!text.trim()) return;
-    const m = { id: Date.now(), text: text.trim(), emoji, addedBy: me, ts: Date.now() };
-    const updated = [m, ...moments];
-    setMoments(updated);
-    await saveMoments(pair, updated);
-    setText("");
-  };
-
-  const fmt = ts => new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});
-
+const MOM_EMOJIS=["🌹","💕","✨","😍","🥰","💋","🫶","🌙","☕","🎵","🌊","🏔️","🎭","💌","🎉","🌸"];
+const TAGS=[{id:"happy",l:"Счастье"},{id:"tender",l:"Нежность"},{id:"funny",l:"Смешно"},{id:"important",l:"Важно"}];
+function MomSec({pair,me}) {
+  const coll=dbColl("duo_moments",pair);
+  const [items,sI]=useState([]);
+  const [txt,sT]=useState("");const [em,sE]=useState("🌹");const [tag,sTag]=useState("happy");
+  useEffect(()=>{coll.load().then(sI);},[]);
+  useEffect(()=>{const iv=setInterval(()=>coll.load().then(sI),5000);return()=>clearInterval(iv);},[]);
+  const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),text:txt.trim(),emoji:em,tag,by:me,ts:Date.now()};const u=[m,...items];sI(u);await coll.save(u);sT("");};
+  const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});
   return (
-    <div className="s-section" id="moments" style={{background:"rgba(255,255,255,.012)"}}>
-      <div className="s-center">
-        <span className="s-eyebrow">Наши воспоминания</span>
-        <h2 className="s-h2">Моменты, <em>которые остаются</em></h2>
-        <p className="s-sub">Записывайте всё — первое свидание, смешные случаи, нежные слова. Ваш личный архив.</p>
-
-        <div className="moments-add">
-          <div className="emoji-picker" style={{justifyContent:"center"}}>
-            {MOMENT_EMOJIS.map(e => <span key={e} className={`emoji-opt ${emoji===e?"selected":""}`} onClick={()=>setEmoji(e)}>{e}</span>)}
-          </div>
-          <textarea className="moments-input" placeholder="Запиши момент, который хочешь сохранить…" value={text} onChange={e=>setText(e.target.value)}/>
-          <div className="moments-row" style={{justifyContent:"flex-end"}}>
-            <button className="cal-submit" disabled={!text.trim()} onClick={add}>Сохранить момент</button>
-          </div>
+    <div className="sec" id="moments">
+      <div className="sec-inner">
+        <span className="eyebrow">Воспоминания</span>
+        <h2 className="sec-h">Моменты, <em>которые остаются</em></h2>
+        <p className="sec-p">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>
+        <div className="add-form">
+          <div className="em-row">{MOM_EMOJIS.map(e=><span key={e} className={`em-opt ${em===e?"sel":""}`} onClick={()=>sE(e)}>{e}</span>)}</div>
+          <div className="tag-picker">{TAGS.map(t=><div key={t.id} className={`tag-opt ${t.id} ${tag===t.id?"sel":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div>
+          <textarea className="textarea" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/>
+          <div className="row" style={{justifyContent:"flex-end"}}><button className="add-btn" disabled={!txt.trim()} onClick={add}>Сохранить</button></div>
         </div>
-
         <div className="moments-grid">
-          {moments.length === 0 && (
-            <div style={{gridColumn:"1/-1",textAlign:"center",padding:"32px",color:"var(--fg3)",fontSize:13}}>
-              Сохраните первый совместный момент 🌹
-            </div>
-          )}
-          {moments.map(m => (
-            <div key={m.id} className="moment-card">
-              <span className="moment-emoji">{m.emoji}</span>
-              <div className="moment-card-top">
-                <span className="moment-who">@{normalize(m.addedBy)}</span>
-                <span className="moment-date">{fmt(m.ts)}</span>
-              </div>
-              <div className="moment-text">{m.text}</div>
-            </div>
-          ))}
+          {items.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"28px",color:"var(--fg3)",fontSize:12}}>Сохраните первый момент 🌹</div>}
+          {items.map(m=><div key={m.id} className="mom-card"><span className="mom-em">{m.emoji}</span><div className="mom-top"><span className="mom-who">@{norm(m.by)}</span><span className="mom-date">{fmt(m.ts)}</span></div><div className="mom-txt">{m.text}</div>{m.tag&&<span className={`mom-tag ${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l||m.tag}</span>}</div>)}
         </div>
       </div>
     </div>
@@ -708,62 +567,34 @@ function MomentsSection({ pair, me, partner }) {
 /* ══════════════════════════════════════════════════════
    DREAMS SECTION
 ══════════════════════════════════════════════════════ */
-function DreamsSection({ me, partner }) {
-  const [myDreams, setMyDreams]         = useState([]);
-  const [partnerDreams, setPartnerDreams] = useState([]);
-  const [input, setInput] = useState("");
-
-  useEffect(() => {
-    loadDreams(me).then(setMyDreams);
-    loadDreams(partner).then(setPartnerDreams);
-  }, [me, partner]);
-
-  useEffect(() => {
-    const iv = setInterval(() => {
-      loadDreams(me).then(setMyDreams);
-      loadDreams(partner).then(setPartnerDreams);
-    }, 5000);
-    return () => clearInterval(iv);
-  }, [me, partner]);
-
-  const add = async () => {
-    if (!input.trim()) return;
-    const updated = [...myDreams, { id: Date.now(), text: input.trim() }];
-    setMyDreams(updated);
-    await saveDreams(me, updated);
-    setInput("");
-  };
-
-  const DreamCol = ({ title, emoji, dreams, isMe }) => (
-    <div className="dreams-col">
-      <div className="dreams-col-title"><span>{emoji}</span>{title}</div>
-      {dreams.length === 0 && <p style={{fontSize:12,color:"var(--fg3)",lineHeight:1.7}}>Мечты пока не добавлены…</p>}
-      {dreams.map(d => (
-        <div key={d.id} className="dream-item">
-          <span className="dream-star">✨</span>
-          <span className="dream-text">{d.text}</span>
-        </div>
-      ))}
-      {isMe && (
-        <div className="dream-add">
-          <input className="dream-input" placeholder="Добавить мечту…" value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && add()}/>
-          <button className="cal-submit" disabled={!input.trim()} onClick={add}>+</button>
-        </div>
-      )}
+function DreamsSec({me,partner}) {
+  const myDb=dbUser("duo_dreams",me);const ptDb=dbUser("duo_dreams",partner);
+  const [my,sMy]=useState([]);const [pt,sPt]=useState([]);
+  const [inp,sI]=useState("");
+  useEffect(()=>{myDb.load().then(sMy);ptDb.load().then(sPt);},[]);
+  useEffect(()=>{const iv=setInterval(()=>{myDb.load().then(sMy);ptDb.load().then(sPt);},6000);return()=>clearInterval(iv);},[]);
+  const add=async()=>{if(!inp.trim())return;const u=[...my,{id:Date.now(),text:inp.trim(),done:false}];sMy(u);await myDb.save(u);sI("");};
+  const toggle=async(id)=>{const u=my.map(d=>d.id===id?{...d,done:!d.done}:d);sMy(u);await myDb.save(u);};
+  const DreamCol=({title,em,items,isMe})=>(
+    <div className="dream-col">
+      <div className="dream-col-h"><span>{em}</span>{title}</div>
+      {items.length===0&&<p style={{fontSize:11,color:"var(--fg3)",lineHeight:1.7}}>Мечты пока не добавлены…</p>}
+      {items.map(d=><div key={d.id} className="dream-item">
+        {isMe?<div className={`dream-check ${d.done?"done":""}`} onClick={()=>toggle(d.id)}>{d.done&&<svg width="9" height="7"><path d="M1 3.5L3.5 6 8 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round"/>  </svg>}</div>:<span className="dream-star">{d.done?"✅":"✨"}</span>}
+        <span className={`dream-text ${d.done?"dream-done":""}`}>{d.text}</span>
+      </div>)}
+      {isMe&&<div className="dream-add-row"><input className="add-inp" placeholder="Добавить мечту…" value={inp} onChange={e=>sI(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="add-btn" disabled={!inp.trim()} onClick={add}>+</button></div>}
     </div>
   );
-
   return (
-    <div className="s-section" id="dreams">
-      <div className="s-center">
-        <span className="s-eyebrow">Мечты</span>
-        <h2 className="s-h2">То, о чём <em>мы мечтаем</em></h2>
-        <p className="s-sub">Каждый пишет своё — и оба видят мечты друг друга.</p>
+    <div className="sec" id="dreams" style={{background:"rgba(255,255,255,.01)"}}>
+      <div className="sec-inner">
+        <span className="eyebrow">Мечты</span>
+        <h2 className="sec-h">То, о чём <em>мы мечтаем</em></h2>
+        <p className="sec-p">Каждый пишет своё — и оба видят мечты друг друга. Можно отмечать выполненные.</p>
         <div className="dreams-cols">
-          <DreamCol title={`@${normalize(me)}`} emoji="🌟" dreams={myDreams} isMe={true}/>
-          <DreamCol title={`@${normalize(partner)}`} emoji="💫" dreams={partnerDreams} isMe={false}/>
+          <DreamCol title={`@${norm(me)}`} em="🌟" items={my} isMe={true}/>
+          <DreamCol title={`@${norm(partner)}`} em="💫" items={pt} isMe={false}/>
         </div>
       </div>
     </div>
@@ -773,84 +604,40 @@ function DreamsSection({ me, partner }) {
 /* ══════════════════════════════════════════════════════
    WISHES SECTION
 ══════════════════════════════════════════════════════ */
-const WISH_EMOJIS = ["🎁","💍","👗","📚","🎵","🍕","💄","🏋️","📷","🎮","🌸","💅","🎭","🍷","✈️","🛍️"];
-
-function WishesSection({ pair, me, partner }) {
-  const [wishes, setWishes]   = useState([]);
-  const [tab, setTab]         = useState("all");
-  const [title, setTitle]     = useState("");
-  const [desc, setDesc]       = useState("");
-  const [emoji, setEmoji]     = useState("🎁");
-
-  useEffect(() => { loadWishes(pair).then(setWishes); }, [pair]);
-  useEffect(() => {
-    const iv = setInterval(() => loadWishes(pair).then(setWishes), 5000);
-    return () => clearInterval(iv);
-  }, [pair]);
-
-  const add = async () => {
-    if (!title.trim()) return;
-    const w = { id: Date.now(), title: title.trim(), desc: desc.trim(), emoji, addedBy: me, done: false, doneBy: null };
-    const updated = [w, ...wishes];
-    setWishes(updated);
-    await saveWishes(pair, updated);
-    setTitle(""); setDesc("");
-  };
-
-  const fulfill = async (id) => {
-    const updated = wishes.map(w => w.id === id ? { ...w, done: true, doneBy: me } : w);
-    setWishes(updated);
-    await saveWishes(pair, updated);
-  };
-
-  const filtered = tab === "all" ? wishes
-    : tab === "mine" ? wishes.filter(w => normalize(w.addedBy) === normalize(me))
-    : wishes.filter(w => normalize(w.addedBy) === normalize(partner));
-
+const WISH_EMOJIS=["🎁","💍","👗","📚","🎵","🍕","💄","🏋️","📷","🎮","🌸","💅","🎭","🍷","✈️","🛍️"];
+function WishesSec({pair,me,partner}) {
+  const coll=dbColl("duo_wishes",pair);
+  const [items,sI]=useState([]);const [tab,sTab]=useState("all");
+  const [t,sT]=useState("");const [d,sD]=useState("");const [em,sE]=useState("🎁");const [prio,sPrio]=useState("med");
+  useEffect(()=>{coll.load().then(sI);},[]);
+  useEffect(()=>{const iv=setInterval(()=>coll.load().then(sI),6000);return()=>clearInterval(iv);},[]);
+  const add=async()=>{if(!t.trim())return;const w={id:Date.now(),title:t.trim(),desc:d.trim(),emoji:em,prio,by:me,done:false,doneBy:null};const u=[w,...items];sI(u);await coll.save(u);sT("");sD("");};
+  const fulfill=async(id)=>{const u=items.map(w=>w.id===id?{...w,done:true,doneBy:me}:w);sI(u);await coll.save(u);};
+  const filtered=tab==="all"?items:tab==="mine"?items.filter(w=>norm(w.by)===norm(me)):items.filter(w=>norm(w.by)===norm(partner));
+  const prioLabels={high:"Очень хочу",med:"Хочу",low:"Когда-нибудь"};
   return (
-    <div className="s-section" id="wishes" style={{background:"rgba(255,255,255,.012)"}}>
-      <div className="s-center">
-        <span className="s-eyebrow">Список желаний</span>
-        <h2 className="s-h2">Что мы <em>хотим</em></h2>
-        <p className="s-sub">Желания каждого — и возможность исполнить желание любимого человека.</p>
-
-        <div className="wishes-tabs">
-          {[["all","Все"],["mine","Мои"],["theirs","Партнёра"]].map(([v,l])=>(
-            <div key={v} className={`wish-tab ${tab===v?"active":""}`} onClick={()=>setTab(v)}>{l}</div>
-          ))}
-        </div>
-
+    <div className="sec" id="wishes">
+      <div className="sec-inner">
+        <span className="eyebrow">Список желаний</span>
+        <h2 className="sec-h">Что мы <em>хотим</em></h2>
+        <p className="sec-p">Желания каждого. Нажми «Исполнить» — сделай приятное любимому человеку.</p>
+        <div className="wish-tabs">{[["all","Все"],["mine","Мои"],["theirs","Партнёра"]].map(([v,l])=><div key={v} className={`wish-tab ${tab===v?"on":""}`} onClick={()=>sTab(v)}>{l} {tab!==v&&<span style={{opacity:.4,fontSize:9,marginLeft:2}}>({(v==="all"?items:v==="mine"?items.filter(w=>norm(w.by)===norm(me)):items.filter(w=>norm(w.by)===norm(partner))).length})</span>}</div>)}</div>
         <div className="wishes-grid">
-          {filtered.length === 0 && (
-            <div style={{gridColumn:"1/-1",textAlign:"center",padding:"28px",color:"var(--fg3)",fontSize:13}}>
-              Пока пусто — добавь первое желание 🎁
-            </div>
-          )}
-          {filtered.map(w => (
-            <div key={w.id} className={`wish-card ${normalize(w.addedBy)===normalize(me)?"mine":"theirs"} ${w.done?"done":""}`}>
-              <div className="wish-card-top">
-                <span className="wish-emoji">{w.emoji}</span>
-                <span className="wish-by">@{normalize(w.addedBy)}</span>
-              </div>
-              <div className="wish-title">{w.title}</div>
-              {w.desc && <div className="wish-desc">{w.desc}</div>}
-              {!w.done && normalize(w.addedBy) !== normalize(me) && (
-                <button className="wish-fulfill" onClick={()=>fulfill(w.id)}>✨ Исполнить</button>
-              )}
-              {w.done && <div className="wish-done-badge">✅ Исполнено — @{normalize(w.doneBy)}</div>}
-            </div>
-          ))}
+          {filtered.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"28px",color:"var(--fg3)",fontSize:12}}>Пусто — добавь первое желание 🎁</div>}
+          {filtered.map(w=><div key={w.id} className={`wish-card ${norm(w.by)===norm(me)?"mine":"theirs"} ${w.done?"done":""}`}>
+            <div className="wish-card-top"><span style={{fontSize:19}}>{w.emoji}</span><span className="wish-by">@{norm(w.by)}</span></div>
+            <div className="wish-t">{w.title}</div>
+            {w.desc&&<div className="wish-d">{w.desc}</div>}
+            <span className={`wish-prio ${w.prio}`}>{prioLabels[w.prio]}</span>
+            {!w.done&&norm(w.by)!==norm(me)&&<button className="wish-fulfill" onClick={()=>fulfill(w.id)}>✨ Исполнить</button>}
+            {w.done&&<div className="wish-done-lbl">✅ @{norm(w.doneBy)} исполнил</div>}
+          </div>)}
         </div>
-
-        <div className="cal-add">
-          <div className="emoji-picker" style={{justifyContent:"center"}}>
-            {WISH_EMOJIS.map(e => <span key={e} className={`emoji-opt ${emoji===e?"selected":""}`} onClick={()=>setEmoji(e)}>{e}</span>)}
-          </div>
-          <div className="cal-row">
-            <input className="cal-input" placeholder="Моё желание…" value={title} onChange={e=>setTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
-            <button className="cal-submit" disabled={!title.trim()} onClick={add}>Добавить</button>
-          </div>
-          <input className="cal-input" placeholder="Описание (необязательно)" value={desc} onChange={e=>setDesc(e.target.value)}/>
+        <div className="add-form">
+          <div className="em-row">{WISH_EMOJIS.map(e=><span key={e} className={`em-opt ${em===e?"sel":""}`} onClick={()=>sE(e)}>{e}</span>)}</div>
+          <div className="prio-picker">{[["high","🔥 Очень хочу"],["med","💫 Хочу"],["low","🌿 Когда-нибудь"]].map(([v,l])=><div key={v} className={`prio-opt ${v} ${prio===v?"sel":""}`} onClick={()=>sPrio(v)}>{l}</div>)}</div>
+          <div className="row"><input className="add-inp" placeholder="Моё желание…" value={t} onChange={e=>sT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="add-btn" disabled={!t.trim()} onClick={add}>+ Добавить</button></div>
+          <input className="add-inp" placeholder="Описание (необязательно)" value={d} onChange={e=>sD(e.target.value)}/>
         </div>
       </div>
     </div>
@@ -860,80 +647,39 @@ function WishesSection({ pair, me, partner }) {
 /* ══════════════════════════════════════════════════════
    TRAVEL SECTION
 ══════════════════════════════════════════════════════ */
-const TRAVEL_FLAGS = ["🇯🇵","🇮🇹","🇫🇷","🇪🇸","🇬🇷","🇹🇭","🇧🇦","🇵🇹","🇲🇽","🇮🇸","🇳🇴","🇨🇭","🇦🇹","🇨🇿","🌍"];
-const STATUS_LABELS = { dream:"Мечта", planning:"Планируем", done:"Были ✓" };
-
-function TravelSection({ pair, me }) {
-  const [places, setPlaces]   = useState([]);
-  const [place, setPlace]     = useState("");
-  const [note, setNote]       = useState("");
-  const [flag, setFlag]       = useState("🇯🇵");
-  const [status, setStatus]   = useState("dream");
-
-  useEffect(() => { loadTravel(pair).then(setPlaces); }, [pair]);
-  useEffect(() => {
-    const iv = setInterval(() => loadTravel(pair).then(setPlaces), 5000);
-    return () => clearInterval(iv);
-  }, [pair]);
-
-  const add = async () => {
-    if (!place.trim()) return;
-    const p = { id: Date.now(), place: place.trim(), note: note.trim(), flag, status, addedBy: me };
-    const updated = [...places, p];
-    setPlaces(updated);
-    await saveTravel(pair, updated);
-    setPlace(""); setNote("");
-  };
-
-  const cycleStatus = async (id) => {
-    const order = ["dream","planning","done"];
-    const updated = places.map(p => {
-      if (p.id !== id) return p;
-      const next = order[(order.indexOf(p.status)+1) % order.length];
-      return { ...p, status: next };
-    });
-    setPlaces(updated);
-    await saveTravel(pair, updated);
-  };
-
+const FLAGS=["🇯🇵","🇮🇹","🇫🇷","🇪🇸","🇬🇷","🇹🇭","🇧🇦","🇵🇹","🇲🇽","🇮🇸","🇳🇴","🇨🇭","🇦🇹","🇨🇿","🇹🇷","🌍"];
+const STAT_MAP={dream:"Мечта",planning:"Планируем",been:"Были ✓"};
+function TravelSec({pair,me}) {
+  const coll=dbColl("duo_travel",pair);
+  const [items,sI]=useState([]);const [pl,sPl]=useState("");const [nt,sNt]=useState("");const [fl,sFl]=useState("🇯🇵");const [st,sSt]=useState("dream");
+  useEffect(()=>{coll.load().then(sI);},[]);
+  useEffect(()=>{const iv=setInterval(()=>coll.load().then(sI),6000);return()=>clearInterval(iv);},[]);
+  const add=async()=>{if(!pl.trim())return;const p={id:Date.now(),place:pl.trim(),note:nt.trim(),flag:fl,status:st,by:me};const u=[...items,p];sI(u);await coll.save(u);sPl("");sNt("");};
+  const cycle=async id=>{const order=["dream","planning","been"];const u=items.map(p=>p.id!==id?p:{...p,status:order[(order.indexOf(p.status)+1)%order.length]});sI(u);await coll.save(u);};
+  const counts={dream:items.filter(x=>x.status==="dream").length,planning:items.filter(x=>x.status==="planning").length,been:items.filter(x=>x.status==="been").length};
   return (
-    <div className="s-section" id="travel">
-      <div className="s-center">
-        <span className="s-eyebrow">Путешествия</span>
-        <h2 className="s-h2">Куда мы <em>хотим поехать</em></h2>
-        <p className="s-sub">Мечты, планы и уже пройденные маршруты. Нажми на карточку — обновить статус.</p>
-
+    <div className="sec" id="travel" style={{background:"rgba(255,255,255,.01)"}}>
+      <div className="sec-inner">
+        <span className="eyebrow">Путешествия</span>
+        <h2 className="sec-h">Куда мы <em>хотим поехать</em></h2>
+        <p className="sec-p">Нажми на карточку чтобы изменить статус: Мечта → Планируем → Были ✓</p>
+        {items.length>0&&<div className="travel-counts"><div className="tcount"><div className={`tcount-n dream`}>{counts.dream}</div><div className="tcount-l">Мечты</div></div><div className="tcount"><div className={`tcount-n planning`}>{counts.planning}</div><div className="tcount-l">Планируем</div></div><div className="tcount"><div className={`tcount-n been`}>{counts.been}</div><div className="tcount-l">Были</div></div></div>}
         <div className="travel-grid">
-          {places.length === 0 && (
-            <div style={{gridColumn:"1/-1",textAlign:"center",padding:"32px",color:"var(--fg3)",fontSize:13}}>
-              Добавьте первое место мечты ✈️
-            </div>
-          )}
-          {places.map(p => (
-            <div key={p.id} className={`travel-card ${p.status}`} onClick={()=>cycleStatus(p.id)} style={{cursor:"pointer"}}>
-              <span className={`travel-status ${p.status}`}>{STATUS_LABELS[p.status]}</span>
-              <span className="travel-flag">{p.flag}</span>
-              <div className="travel-place">{p.place}</div>
-              {p.note && <div className="travel-note">{p.note}</div>}
-              <div className="travel-who">@{normalize(p.addedBy)}</div>
-            </div>
-          ))}
+          {items.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"28px",color:"var(--fg3)",fontSize:12}}>Добавьте первое место мечты ✈️</div>}
+          {items.map(p=><div key={p.id} className={`travel-card ${p.status}`} onClick={()=>cycle(p.id)}>
+            <span className={`travel-stat-badge ${p.status}`}>{STAT_MAP[p.status]}</span>
+            <span className="travel-flag">{p.flag}</span>
+            <div className="travel-place">{p.place}</div>
+            {p.note&&<div className="travel-note">{p.note}</div>}
+            <div className="travel-who">@{norm(p.by)}</div>
+            <div className="travel-hint">Нажми чтобы изменить статус</div>
+          </div>)}
         </div>
-
-        <div className="travel-add">
-          <div className="emoji-picker" style={{justifyContent:"center"}}>
-            {TRAVEL_FLAGS.map(f => <span key={f} className={`emoji-opt ${flag===f?"selected":""}`} onClick={()=>setFlag(f)}>{f}</span>)}
-          </div>
-          <div className="travel-status-picker">
-            {Object.entries(STATUS_LABELS).map(([v,l])=>(
-              <div key={v} className={`travel-status-opt ${v} ${status===v?"selected":""}`} onClick={()=>setStatus(v)}>{l}</div>
-            ))}
-          </div>
-          <div className="cal-row">
-            <input className="cal-input" placeholder="Название места" value={place} onChange={e=>setPlace(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
-            <button className="cal-submit" disabled={!place.trim()} onClick={add}>Добавить</button>
-          </div>
-          <input className="cal-input" placeholder="Заметка (необязательно)" value={note} onChange={e=>setNote(e.target.value)}/>
+        <div className="add-form">
+          <div className="em-row">{FLAGS.map(f=><span key={f} className={`em-opt ${fl===f?"sel":""}`} onClick={()=>sFl(f)}>{f}</span>)}</div>
+          <div className="status-picker">{Object.entries(STAT_MAP).map(([v,l])=><div key={v} className={`sopt ${v} ${st===v?"sel":""}`} onClick={()=>sSt(v)}>{l}</div>)}</div>
+          <div className="row"><input className="add-inp" placeholder="Название места" value={pl} onChange={e=>sPl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="add-btn" disabled={!pl.trim()} onClick={add}>+ Добавить</button></div>
+          <input className="add-inp" placeholder="Заметка (необязательно)" value={nt} onChange={e=>sNt(e.target.value)}/>
         </div>
       </div>
     </div>
@@ -943,47 +689,27 @@ function TravelSection({ pair, me }) {
 /* ══════════════════════════════════════════════════════
    PROMISES SECTION
 ══════════════════════════════════════════════════════ */
-const DEFAULT_PROMISES = [
-  { id:1, emoji:"🌅", text:"Встречать каждый день вместе, даже на расстоянии" },
-  { id:2, emoji:"💬", text:"Говорить честно, даже когда это трудно" },
-  { id:3, emoji:"🌱", text:"Расти вместе и поддерживать мечты друг друга" },
-  { id:4, emoji:"💋", text:"Никогда не забывать, почему мы начали" },
-];
-
-function PromisesSection({ me }) {
-  const [promises] = useState(DEFAULT_PROMISES);
-  const [input, setInput] = useState("");
-  const [myPromises, setMyPromises] = useState([]);
-
-  const add = () => {
-    if (!input.trim()) return;
-    setMyPromises(p => [...p, { id: Date.now(), emoji:"💌", text: input.trim(), addedBy: me }]);
-    setInput("");
-  };
-
+const DEF_PROMISES=[{id:1,emoji:"🌅",text:"Встречать каждый день вместе, даже на расстоянии"},{id:2,emoji:"💬",text:"Говорить честно, даже когда это трудно"},{id:3,emoji:"🌱",text:"Расти вместе и поддерживать мечты друг друга"},{id:4,emoji:"💋",text:"Никогда не забывать, почему мы начали"},{id:5,emoji:"🤝",text:"Быть командой — всегда"}];
+function PromisesSec({me}) {
+  const [items,sI]=useState(DEF_PROMISES);const [inp,sInp]=useState("");
+  const toggle=id=>sI(p=>p.map(x=>x.id===id?{...x,done:!x.done}:x));
+  const add=()=>{if(!inp.trim())return;sI(p=>[...p,{id:Date.now(),emoji:"💌",text:inp.trim(),by:me,done:false}]);sInp("");};
   return (
-    <div className="s-section" id="promises">
-      <div className="s-center">
-        <span className="s-eyebrow">Наши обещания</span>
-        <h2 className="s-h2">Слова, <em>которые важны</em></h2>
-        <p className="s-sub">То, что вы обещаете друг другу — здесь, навсегда.</p>
-
-        <div className="promises-list">
-          {[...promises, ...myPromises].map(pr => (
-            <div key={pr.id} className="promise-item">
-              <div className="promise-icon">{pr.emoji}</div>
-              <div>
-                <div className="promise-text">{pr.text}</div>
-                {pr.addedBy && <div className="promise-who">@{normalize(pr.addedBy)}</div>}
-              </div>
-            </div>
-          ))}
+    <div className="sec" id="promises">
+      <div className="sec-inner">
+        <span className="eyebrow">Обещания</span>
+        <h2 className="sec-h">Слова, <em>которые важны</em></h2>
+        <p className="sec-p">То, что вы обещаете друг другу — здесь, навсегда. Отмечай выполненные.</p>
+        <div className="prom-list">
+          {items.map(p=><div key={p.id} className="prom-item">
+            <span className="prom-em">{p.emoji}</span>
+            <div className="prom-content"><div className="prom-text" style={p.done?{textDecoration:"line-through",opacity:.45}:{}}>{p.text}</div>{p.by&&<div className="prom-who">@{norm(p.by)}</div>}</div>
+            <div className={`prom-check ${p.done?"done":""}`} onClick={()=>toggle(p.id)}>{p.done&&<svg width="9" height="7"><path d="M1 3.5L3.5 6 8 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>}</div>
+          </div>)}
         </div>
-
-        <div className="promise-add">
-          <input className="promise-input" placeholder="Добавить своё обещание…" value={input}
-            onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
-          <button className="cal-submit" disabled={!input.trim()} onClick={add}>Добавить</button>
+        <div className="prom-add-row">
+          <input className="add-inp" placeholder="Добавить своё обещание…" value={inp} onChange={e=>sInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
+          <button className="add-btn" disabled={!inp.trim()} onClick={add}>+ Добавить</button>
         </div>
       </div>
     </div>
@@ -993,510 +719,231 @@ function PromisesSection({ me }) {
 /* ══════════════════════════════════════════════════════
    LANDING
 ══════════════════════════════════════════════════════ */
-const SECTIONS = [
-  {id:"hero",     label:"Главная"},
-  {id:"timer",    label:"Счётчик"},
-  {id:"calendar", label:"Календарь"},
-  {id:"moments",  label:"Моменты"},
-  {id:"dreams",   label:"Мечты"},
-  {id:"wishes",   label:"Желания"},
-  {id:"travel",   label:"Путешествия"},
-  {id:"promises", label:"Обещания"},
-];
-const DEFAULT_MSG = "Ты — лучшее, что есть в моей жизни 🌹";
+const SECTIONS=[{id:"hero",l:"Главная"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"promises",l:"Обещания"}];
 
-function Landing({ me, partner, surpriseMsg, connectedAt, onDisconnect }) {
-  const [navScrolled, setNavScrolled]     = useState(false);
-  const [activeSection, setActiveSection] = useState("hero");
-  const [startDate, setStartDate]         = useState(() => localStorage.getItem("duo_start_date") || "");
+function Landing({me,partner,surpriseMsg,connectedAt,onDisc}) {
+  const [stuck,sStuck]=useState(false);const [active,sActive]=useState("hero");
+  const [startDate,sSD]=useState(()=>localStorage.getItem("duo_start")||"");
+  const [partnerScroll,sPScroll]=useState(null);const [partnerCursor,sPCursor]=useState(null);
+  const [showReacts,sReacts]=useState(false);const [floats,sFloats]=useState([]);const reactId=useRef(0);
+  const [showChat,sChat]=useState(false);const [msgs,sMsgs]=useState([]);const [chatInp,sChatInp]=useState("");const [unread,sUnread]=useState(0);const lastMsgTs=useRef(0);const msgsEnd=useRef(null);
+  const [isRec,sRec]=useState(false);const mrRef=useRef(null);const acRef=useRef([]);const recStart=useRef(null);
+  const [myKiss,sMK]=useState(false);const [ptKiss,sPK]=useState(false);const [kissStart,sKS]=useState(null);const kissToastKey=useRef(0);const [kissToast,sKT]=useState(null);
+  const [showVibe,sVibe]=useState(false);const [vibeR,sVibeR]=useState(null);const lastVibeTs=useRef(0);
+  const [musicOn,sMusicOn]=useState(false);
+  const [surprise,sSurprise]=useState(false);const surpriseFired=useRef(false);
+  const scrollRef=useRef(null);const secRefs=useRef({});const stRef=useRef({scroll:0,cursor:null});const saveT=useRef(0);
+  const pair=pairKey(me,partner);
 
-  // partner live state
-  const [partnerScroll, setPartnerScroll]   = useState(null);
-  const [partnerCursor, setPartnerCursor]   = useState(null);
+  const flush=useCallback(async(extra={})=>{const now=Date.now();if(now-saveT.current<400)return;saveT.current=now;await saveState(me,{scroll:stRef.current.scroll,cursor:stRef.current.cursor,...extra});},[me]);
 
-  // reactions
-  const [showReacts, setShowReacts] = useState(false);
-  const [floatReacts, setFloatReacts] = useState([]);
-  const reactId = useRef(0);
+  useEffect(()=>{
+    const el=scrollRef.current;if(!el)return;
+    const fn=()=>{const pct=el.scrollTop/(el.scrollHeight-el.clientHeight);stRef.current.scroll=isNaN(pct)?0:pct;sStuck(el.scrollTop>16);
+    for(const[id,ref]of Object.entries(secRefs.current)){if(!ref)continue;const r=ref.getBoundingClientRect();if(r.top<=el.clientHeight*.4&&r.bottom>0){sActive(id);break;}}
+    if(!surpriseFired.current&&stRef.current.scroll>0.94){surpriseFired.current=true;sSurprise(true);}
+    flush();};
+    el.addEventListener("scroll",fn,{passive:true});return()=>el.removeEventListener("scroll",fn);
+  },[flush]);
 
-  // chat
-  const [showChat, setShowChat]   = useState(false);
-  const [msgs, setMsgs]           = useState([]);
-  const [chatInput, setChatInput] = useState("");
-  const [unread, setUnread]       = useState(0);
-  const lastMsgTs = useRef(0);
-  const msgsEnd   = useRef(null);
+  useEffect(()=>{const fn=e=>{stRef.current.cursor={x:e.clientX/window.innerWidth,y:e.clientY/window.innerHeight};flush();};window.addEventListener("mousemove",fn);return()=>window.removeEventListener("mousemove",fn);},[flush]);
 
-  // voice
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef   = useRef([]);
-  const recordStartRef   = useRef(null);
+  useEffect(()=>{
+    const iv=setInterval(async()=>{
+      const d=await loadState(partner);if(!d)return;
+      if(d.scroll!=null)sPScroll(d.scroll);
+      if(d.cursor)sPCursor(d.cursor);
+      if(d.reaction&&d.reaction.ts>(reactId._last||0)){reactId._last=d.reaction.ts;const id=++reactId.current;sFloats(p=>[...p,{id,emoji:d.reaction.emoji,x:`${d.reaction.x}%`,y:`${d.reaction.y}%`}]);}
+      if(d.msg&&d.msg.ts>lastMsgTs.current){lastMsgTs.current=d.msg.ts;sMsgs(p=>[...p,{...d.msg,from:partner}]);if(!showChat)sUnread(n=>n+1);}
+      const pk=d.kissing||false;sPK(pk);if(pk&&myKiss&&!kissStart)sKS(d.kissTs||Date.now());
+      if(d.vibe&&d.vibe.ts>lastVibeTs.current){lastVibeTs.current=d.vibe.ts;const pat=VIBE_PATTERNS.find(p=>p.id===d.vibe.id);if(pat&&navigator.vibrate)navigator.vibrate(pat.pattern);sVibeR({id:d.vibe.id,ts:d.vibe.ts});}
+    },POLL);
+    return()=>clearInterval(iv);
+  },[partner,showChat,myKiss,kissStart]);
 
-  // kiss
-  const [myKissing, setMyKissing]           = useState(false);
-  const [partnerKissing, setPartnerKissing] = useState(false);
-  const [kissStart, setKissStart]           = useState(null);
-  const kissToastKey = useRef(0);
-  const [kissToast, setKissToast]           = useState(null);
+  useEffect(()=>{msgsEnd.current?.scrollIntoView({behavior:"smooth"});},[msgs,showChat]);
+  useEffect(()=>{if(showChat)sUnread(0);},[showChat]);
 
-  // vibe
-  const [showVibe, setShowVibe]           = useState(false);
-  const [vibeRipple, setVibeRipple]       = useState(null);
-  const [vibeSentFlash, setVibeSentFlash] = useState(false);
-  const lastVibeTs = useRef(0);
+  const scrollTo=id=>secRefs.current[id]?.scrollIntoView({behavior:"smooth"});
+  const sendReact=async em=>{sReacts(false);const x=35+Math.random()*30,y=25+Math.random()*45;const id=++reactId.current;sFloats(p=>[...p,{id,emoji:em,x:`${x}%`,y:`${y}%`}]);const st=await loadState(me)||{};await saveState(me,{...st,reaction:{emoji:em,x,y,ts:Date.now()}});};
+  const sendMsg=async(text,voiceData=null,voiceDur=null)=>{const ts=Date.now();sMsgs(p=>[...p,{text,from:me,ts,voiceData,voiceDur}]);const st=await loadState(me)||{};await saveState(me,{...st,msg:{text,ts,voiceData,voiceDur}});};
+  const startRec=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mr=new MediaRecorder(stream,{mimeType:"audio/webm"});acRef.current=[];mr.ondataavailable=e=>acRef.current.push(e.data);mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(acRef.current,{type:"audio/webm"});if(blob.size>10){const dur=(Date.now()-recStart.current)/1000;const reader=new FileReader();reader.onloadend=async()=>{await sendMsg("🎤 Голосовое",reader.result.split(",")[1],dur);};reader.readAsDataURL(blob);}sRec(false);};mr.start();mrRef.current=mr;recStart.current=Date.now();sRec(true);setTimeout(()=>{if(mr.state==="recording")mr.stop();},30000);}catch(e){}};
+  const stopRec=()=>{if(mrRef.current?.state==="recording")mrRef.current.stop();};
+  const startKiss=async()=>{sMK(true);const ts=Date.now();await flush({kissing:true,kissTs:ts});if(ptKiss)sKS(ts);};
+  const endKiss=async()=>{if(!myKiss)return;const dur=kissStart?Math.floor((Date.now()-kissStart)/1000):null;sMK(false);sKS(null);await flush({kissing:false});if(ptKiss&&dur&&dur>0){const key=++kissToastKey.current;sKT({key,dur});setTimeout(()=>sKT(t=>t?.key===key?null:t),4500);}};
+  const sendVibe=async pat=>{sVibe(false);if(navigator.vibrate)navigator.vibrate([40]);const st=await loadState(me)||{};await saveState(me,{...st,vibe:{id:pat.id,ts:Date.now()}});};
+  const toggleMusic=()=>{if(musicOn){amb.stop();sMusicOn(false);}else{amb.start();sMusicOn(true);}};
 
-  // music
-  const [musicOn, setMusicOn] = useState(false);
-
-  // surprise
-  const [surprise, setSurprise]     = useState(false);
-  const surpriseFired = useRef(false);
-
-  const scrollRef   = useRef(null);
-  const sectionRefs = useRef({});
-  const stateRef    = useRef({ scroll: 0, cursor: null });
-  const saveThrottle = useRef(0);
-
-  const pair = pairKey(me, partner);
-
-  const flush = useCallback(async (extra = {}) => {
-    const now = Date.now();
-    if (now - saveThrottle.current < 400) return;
-    saveThrottle.current = now;
-    await saveState(me, { scroll: stateRef.current.scroll, cursor: stateRef.current.cursor, ...extra });
-  }, [me]);
-
-  // scroll tracking
-  useEffect(() => {
-    const el = scrollRef.current; if (!el) return;
-    const fn = () => {
-      const pct = el.scrollTop / (el.scrollHeight - el.clientHeight);
-      stateRef.current.scroll = isNaN(pct) ? 0 : pct;
-      setNavScrolled(el.scrollTop > 20);
-      for (const [id, ref] of Object.entries(sectionRefs.current)) {
-        if (!ref) continue;
-        const r = ref.getBoundingClientRect();
-        if (r.top <= el.clientHeight * .4 && r.bottom > 0) { setActiveSection(id); break; }
-      }
-      if (!surpriseFired.current && stateRef.current.scroll > 0.94) {
-        surpriseFired.current = true; setSurprise(true);
-      }
-      flush();
-    };
-    el.addEventListener("scroll", fn, { passive: true });
-    return () => el.removeEventListener("scroll", fn);
-  }, [flush]);
-
-  // cursor tracking
-  useEffect(() => {
-    const fn = e => { stateRef.current.cursor = { x: e.clientX/window.innerWidth, y: e.clientY/window.innerHeight }; flush(); };
-    window.addEventListener("mousemove", fn);
-    return () => window.removeEventListener("mousemove", fn);
-  }, [flush]);
-
-  // poll partner
-  useEffect(() => {
-    const iv = setInterval(async () => {
-      const d = await loadState(partner); if (!d) return;
-      if (d.scroll != null) setPartnerScroll(d.scroll);
-      if (d.cursor) setPartnerCursor(d.cursor);
-      if (d.reaction && d.reaction.ts > (reactId._last || 0)) {
-        reactId._last = d.reaction.ts;
-        const id = ++reactId.current;
-        setFloatReacts(p => [...p, { id, emoji: d.reaction.emoji, x: `${d.reaction.x}%`, y: `${d.reaction.y}%` }]);
-      }
-      if (d.msg && d.msg.ts > lastMsgTs.current) {
-        lastMsgTs.current = d.msg.ts;
-        setMsgs(p => [...p, { ...d.msg, from: partner }]);
-        if (!showChat) setUnread(n => n + 1);
-      }
-      const pk = d.kissing || false;
-      setPartnerKissing(pk);
-      if (pk && myKissing && !kissStart) setKissStart(d.kissTs || Date.now());
-      if (d.vibe && d.vibe.ts > lastVibeTs.current) {
-        lastVibeTs.current = d.vibe.ts;
-        const pat = VIBE_PATTERNS.find(p => p.id === d.vibe.id);
-        if (pat && navigator.vibrate) navigator.vibrate(pat.pattern);
-        setVibeRipple({ id: d.vibe.id, ts: d.vibe.ts });
-      }
-    }, POLL_MS);
-    return () => clearInterval(iv);
-  }, [partner, showChat, myKissing, kissStart]);
-
-  useEffect(() => { msgsEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, showChat]);
-  useEffect(() => { if (showChat) setUnread(0); }, [showChat]);
-
-  const scrollTo = id => sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth" });
-
-  const sendReaction = async emoji => {
-    setShowReacts(false);
-    const x = 35 + Math.random()*30, y = 25 + Math.random()*45;
-    const id = ++reactId.current;
-    setFloatReacts(p => [...p, { id, emoji, x:`${x}%`, y:`${y}%` }]);
-    const st = await loadState(me) || {};
-    await saveState(me, { ...st, reaction: { emoji, x, y, ts: Date.now() } });
-  };
-
-  const sendMsg = async (text, voiceData = null, voiceDur = null) => {
-    const ts = Date.now();
-    setMsgs(p => [...p, { text, from: me, ts, voiceData, voiceDur }]);
-    const st = await loadState(me) || {};
-    await saveState(me, { ...st, msg: { text, ts, voiceData, voiceDur } });
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      audioChunksRef.current = [];
-      mr.ondataavailable = e => audioChunksRef.current.push(e.data);
-      mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        if (blob.size > 10) {
-          const dur = (Date.now() - recordStartRef.current) / 1000;
-          const reader = new FileReader();
-          reader.onloadend = async () => { await sendMsg("🎤 Голосовое", reader.result.split(",")[1], dur); };
-          reader.readAsDataURL(blob);
-        }
-        setIsRecording(false);
-      };
-      mr.start(); mediaRecorderRef.current = mr; recordStartRef.current = Date.now();
-      setIsRecording(true);
-      setTimeout(() => { if (mr.state === "recording") mr.stop(); }, 30000);
-    } catch(e) { console.warn(e); }
-  };
-  const stopRecording = () => { if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop(); };
-
-  const startKiss = async () => {
-    setMyKissing(true);
-    const ts = Date.now();
-    await flush({ kissing: true, kissTs: ts });
-    if (partnerKissing) setKissStart(ts);
-  };
-  const endKiss = async () => {
-    if (!myKissing) return;
-    const dur = kissStart ? Math.floor((Date.now()-kissStart)/1000) : null;
-    setMyKissing(false); setKissStart(null);
-    await flush({ kissing: false });
-    if (partnerKissing && dur && dur > 0) {
-      const key = ++kissToastKey.current;
-      setKissToast({ key, dur });
-      setTimeout(() => setKissToast(t => t?.key===key ? null : t), 5000);
-    }
-  };
-
-  const sendVibe = async pattern => {
-    setShowVibe(false);
-    if (navigator.vibrate) navigator.vibrate([40]);
-    setVibeSentFlash(true); setTimeout(() => setVibeSentFlash(false), 600);
-    const st = await loadState(me) || {};
-    await saveState(me, { ...st, vibe: { id: pattern.id, ts: Date.now() } });
-  };
-
-  const toggleMusic = () => { if (musicOn) { ambient.stop(); setMusicOn(false); } else { ambient.start(); setMusicOn(true); } };
-
-  const handleStartDate = e => {
-    setStartDate(e.target.value);
-    localStorage.setItem("duo_start_date", e.target.value);
-  };
-
-  const ghostTop = partnerScroll !== null ? `calc(${partnerScroll*100}% - 18px)` : null;
-
-  // hero stats
-  const msSince = startDate ? Date.now() - new Date(startDate).getTime() : 0;
-  const daysTogether = startDate && msSince > 0 ? Math.floor(msSince/86400000) : null;
+  const ghostTop=partnerScroll!==null?`calc(${partnerScroll*100}% - 16px)`:null;
+  const msSince=startDate?Date.now()-new Date(startDate).getTime():0;
+  const daysTogether=startDate&&msSince>0?Math.floor(msSince/86400000):null;
+  const milestones=[{n:7,l:"7 дней"},{n:30,l:"1 месяц"},{n:100,l:"100 дней"},{n:180,l:"полгода"},{n:365,l:"1 год"},{n:730,l:"2 года"},{n:1000,l:"1000 дней"}];
 
   return (
-    <div ref={scrollRef} className="land-wrap">
-      <TogetherTimer connectedAt={connectedAt}/>
-
-      {/* NAV */}
-      <nav className={`lnav ${navScrolled?"scrolled":""}`}>
-        <span className="lnav-logo">💕 {normalize(me)} & {normalize(partner)}</span>
-        <ul className="lnav-links">
-          {SECTIONS.map(s => <li key={s.id}><span className={`lnav-link ${activeSection===s.id?"active":""}`} onClick={()=>scrollTo(s.id)}>{s.label}</span></li>)}
-        </ul>
+    <div ref={scrollRef} className="app">
+      <TogetherTimer t0={connectedAt}/>
+      <nav className={`nav ${stuck?"stuck":""}`}>
+        <span className="nav-brand">💕 {norm(me)} & {norm(partner)}</span>
+        <ul className="nav-links">{SECTIONS.map(s=><li key={s.id}><span className={`nav-link ${active===s.id?"on":""}`} onClick={()=>scrollTo(s.id)}>{s.l}</span></li>)}</ul>
       </nav>
 
-      {/* ── HERO ── */}
-      <section id="hero" ref={el=>sectionRefs.current.hero=el} className="s-hero">
+      {/* HERO */}
+      <section id="hero" ref={el=>secRefs.current.hero=el} className="hero">
+        <div className="hero-bg"/>
         <span className="hero-eyebrow">Только вы двое</span>
-        <h1 className="hero-h1">Наши<br/>отношения</h1>
-        <p className="hero-sub">Календарь, воспоминания и обещания — всё в одном месте для вас двоих.</p>
-
-        {daysTogether !== null && (
-          <div className="hero-stats">
-            <div><div className="hero-stat-n">{daysTogether}</div><div className="hero-stat-l">дней вместе</div></div>
-            <div><div className="hero-stat-n">{Math.floor(daysTogether/7)}</div><div className="hero-stat-l">недель</div></div>
-            <div><div className="hero-stat-n">{Math.floor(daysTogether/30)}</div><div className="hero-stat-l">месяцев</div></div>
-          </div>
-        )}
-
-        <div className="hero-btns">
-          <button className="btn-p" onClick={()=>scrollTo("moments")}>Наши моменты 🌹</button>
-          <button className="btn-g" onClick={()=>scrollTo("calendar")}>Календарь 📅</button>
-        </div>
-
-        <div className="scroll-hint"><div className="scroll-hint-line"/></div>
+        <h1 className="hero-h">Наши<br/>отношения</h1>
+        <p className="hero-sub">Ваш личный мир — календарь, воспоминания, мечты и желания.</p>
+        {daysTogether!==null&&<div className="hero-stats"><div><div className="hero-stat-n">{daysTogether}</div><div className="hero-stat-l">дней вместе</div></div><div><div className="hero-stat-n">{Math.floor(daysTogether/7)}</div><div className="hero-stat-l">недель</div></div><div><div className="hero-stat-n">{Math.floor(daysTogether/30)}</div><div className="hero-stat-l">месяцев</div></div></div>}
+        <div className="hero-btns"><button className="btn-filled" onClick={()=>scrollTo("moments")}>Наши моменты 🌹</button><button className="btn-outline" onClick={()=>scrollTo("calendar")}>Календарь 📅</button></div>
+        <div className="scroll-cue"><div className="scroll-cue-line"/></div>
       </section>
 
-      <div className="section-divider"/>
+      <div className="hr"/>
 
-      {/* ── LOVE TIMER ── */}
-      <section id="timer" ref={el=>sectionRefs.current.timer=el} className="s-section">
-        <div className="s-center">
-          <span className="s-eyebrow">Счётчик любви</span>
-          <h2 className="s-h2">Сколько мы <em>вместе</em></h2>
-          <p className="s-sub">Каждая секунда считается.</p>
-
-          {startDate
-            ? <LoveTimer startDate={startDate}/>
-            : <p style={{color:"var(--fg3)",fontSize:13,marginBottom:24}}>Укажи дату начала отношений</p>
-          }
-
-          <div className="start-date-card">
-            <span className="start-date-label">Вместе с</span>
-            <input className="start-date-input" type="date" value={startDate} onChange={handleStartDate}/>
-          </div>
+      {/* TIMER */}
+      <section id="timer" ref={el=>secRefs.current.timer=el} className="sec">
+        <div className="sec-inner">
+          <span className="eyebrow">Счётчик любви</span>
+          <h2 className="sec-h">Сколько мы <em>вместе</em></h2>
+          <p className="sec-p">Каждая секунда на счету.</p>
+          {startDate?<LoveTimer start={startDate}/>:<p style={{color:"var(--fg3)",fontSize:12,marginBottom:20}}>Укажи дату начала</p>}
+          <div className="date-row"><span className="date-row-l">Вместе с</span><input className="date-inp" type="date" value={startDate} onChange={e=>{sSD(e.target.value);localStorage.setItem("duo_start",e.target.value);}}/></div>
+          {startDate&&daysTogether!==null&&<div className="milestones">{milestones.map(ms=><div key={ms.n} className={`ms ${daysTogether>=ms.n?"hit":""}`}>{daysTogether>=ms.n?"✓ ":""}{ms.l}</div>)}</div>}
         </div>
       </section>
 
-      <div className="section-divider"/>
+      <div className="hr"/>
+      <section ref={el=>secRefs.current.calendar=el}><CalSec pair={pair} me={me}/></section>
+      <div className="hr"/>
+      <section ref={el=>secRefs.current.moments=el}><MomSec pair={pair} me={me}/></section>
+      <div className="hr"/>
+      <section ref={el=>secRefs.current.dreams=el}><DreamsSec me={me} partner={partner}/></section>
+      <div className="hr"/>
+      <section ref={el=>secRefs.current.wishes=el}><WishesSec pair={pair} me={me} partner={partner}/></section>
+      <div className="hr"/>
+      <section ref={el=>secRefs.current.travel=el}><TravelSec pair={pair} me={me}/></section>
+      <div className="hr"/>
+      <section ref={el=>secRefs.current.promises=el}><PromisesSec me={me}/></section>
 
-      {/* ── CALENDAR ── */}
-      <section ref={el=>sectionRefs.current.calendar=el}>
-        <CalendarSection pair={pair} me={me}/>
-      </section>
-
-      <div className="section-divider"/>
-
-      {/* ── MOMENTS ── */}
-      <section ref={el=>sectionRefs.current.moments=el}>
-        <MomentsSection pair={pair} me={me} partner={partner}/>
-      </section>
-
-      <div className="section-divider"/>
-
-      {/* ── DREAMS ── */}
-      <section ref={el=>sectionRefs.current.dreams=el}>
-        <DreamsSection me={me} partner={partner}/>
-      </section>
-
-      <div className="section-divider"/>
-
-      {/* ── WISHES ── */}
-      <section ref={el=>sectionRefs.current.wishes=el}>
-        <WishesSection pair={pair} me={me} partner={partner}/>
-      </section>
-
-      <div className="section-divider"/>
-
-      {/* ── TRAVEL ── */}
-      <section ref={el=>sectionRefs.current.travel=el}>
-        <TravelSection pair={pair} me={me}/>
-      </section>
-
-      <div className="section-divider"/>
-
-      {/* ── PROMISES ── */}
-      <section ref={el=>sectionRefs.current.promises=el}>
-        <PromisesSection me={me}/>
-      </section>
-
-      <footer className="lfoot">
-        <p className="foot-copy">@{normalize(me)} & @{normalize(partner)} · только вы двое 💕</p>
-      </footer>
+      <footer className="foot"><p className="foot-t">@{norm(me)} & @{norm(partner)} · только вы двое 💕</p></footer>
 
       {/* ═══ OVERLAYS ═══ */}
-      {ghostTop && <div className="partner-bar"><div className="partner-bar-track"/><div className="partner-bar-thumb" style={{top:ghostTop}}/></div>}
-      {partnerCursor && <div className="partner-cursor" style={{left:`${partnerCursor.x*100}%`,top:`${partnerCursor.y*100}%`}}><div className="partner-cursor-dot"/><div className="partner-cursor-lbl">@{normalize(partner)}</div></div>}
-      {floatReacts.map(r=><FloatReact key={r.id} {...r} onDone={()=>setFloatReacts(p=>p.filter(x=>x.id!==r.id))}/>)}
-      {showReacts && <div className="react-panel">{REACTS.map(e=><span key={e} className="react-em" onClick={()=>sendReaction(e)}>{e}</span>)}</div>}
-      <KissOverlay myKissing={myKissing} partnerKissing={partnerKissing} kissStart={kissStart} partner={partner}/>
-      {kissToast && <div key={kissToast.key} className="last-kiss-toast">💋 <strong>{kissToast.dur}с</strong> — ваш поцелуй</div>}
-      {showVibe && <VibePanel onSend={sendVibe}/>}
-      {vibeRipple && <VibeRipple key={vibeRipple.ts} vibe={vibeRipple} partner={partner} onDone={()=>setVibeRipple(null)}/>}
-      {surprise && surpriseMsg && <SurpriseOverlay from={partner} message={surpriseMsg||DEFAULT_MSG} onClose={()=>setSurprise(false)}/>}
+      {ghostTop&&<div className="pbar"><div className="pbar-track"/><div className="pbar-thumb" style={{top:ghostTop}}/></div>}
+      {partnerCursor&&<div className="pcursor" style={{left:`${partnerCursor.x*100}%`,top:`${partnerCursor.y*100}%`}}><div className="pcursor-dot"/><div className="pcursor-name">@{norm(partner)}</div></div>}
+      {floats.map(r=><FloatReact key={r.id} {...r} onDone={()=>sFloats(p=>p.filter(x=>x.id!==r.id))}/>)}
+      {showReacts&&<div className="react-row">{REACTS.map(e=><span key={e} className="react-em" onClick={()=>sendReact(e)}>{e}</span>)}</div>}
+      {/* kiss */}
+      <div className="kiss-wrap">{(myKiss||ptKiss)&&(myKiss&&ptKiss?<KissCounter start={kissStart}/>:<div className="kiss-wait">{myKiss?<>Ждём <strong>@{norm(partner)}</strong>…</>:<><strong>@{norm(partner)}</strong> ждёт!</>}</div>)}</div>
+      {kissToast&&<div key={kissToast.key} className="kiss-toast">💋 <strong>{kissToast.dur}с</strong> — ваш поцелуй</div>}
+      {showVibe&&<div className="vibe-panel"><div className="vibe-title">Отправить вибрацию</div><div className="vibe-opts">{VIBE_PATTERNS.map(p=><div key={p.id} className="vibe-opt" onClick={()=>sendVibe(p)}><span className="vibe-em">{p.emoji}</span><span className="vibe-lbl">{p.label}</span></div>)}</div></div>}
+      {vibeR&&<VibeRipple key={vibeR.ts} vid={vibeR.id} partner={partner} onDone={()=>sVibeR(null)}/>}
+      {surprise&&surpriseMsg&&<div className="surprise-bg" onClick={()=>sSurprise(false)}><div className="surprise-card" onClick={e=>e.stopPropagation()}><div className="surp-bg-blur"/><span className="surp-em">🌹</span><div className="surp-t">Для тебя</div><div className="surp-msg">"{surpriseMsg}"</div><div className="surp-from">— с любовью, @{norm(me)} 💕</div><button className="surp-btn" onClick={()=>sSurprise(false)}>Обнять в ответ 🤗</button></div></div>}
 
       {/* CHAT */}
-      {showChat && <div className="chat-panel">
-        <div className="chat-hd"><div><div className="chat-hd-title">💬 @{normalize(partner)}</div><div className="chat-hd-sub">Только вы двое</div></div><div className="chat-x" onClick={()=>setShowChat(false)}>✕</div></div>
-        <div className="chat-msgs">
-          {msgs.length===0 && <div className="chat-empty">Напиши первым 🌹</div>}
-          {msgs.map((m,i)=>(
-            <div key={i} className={`chat-msg ${m.from===me?"mine":"theirs"} ${m.voiceData?"voice":""}`}>
-              {m.from!==me && <div className="chat-msg-from">@{normalize(m.from)}</div>}
-              {m.voiceData ? <VoicePlayer audioData={m.voiceData} duration={m.voiceDur}/> : <div>{m.text}</div>}
-            </div>
-          ))}
-          <div ref={msgsEnd}/>
-        </div>
-        <div className="chat-input-row">
-          <button className={`chat-voice-btn ${isRecording?"recording":""}`} onMouseDown={startRecording} onMouseUp={stopRecording} onTouchStart={startRecording} onTouchEnd={stopRecording}>🎤</button>
-          <input className="chat-input" placeholder="Напиши…" value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&chatInput.trim()){sendMsg(chatInput.trim());setChatInput("");}}}/>
-          <button className="chat-send" disabled={!chatInput.trim()} onClick={()=>{if(chatInput.trim()){sendMsg(chatInput.trim());setChatInput("");}}}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M13 1L1 5.5l5 2 2 5L13 1z" fill="white"/></svg>
-          </button>
-        </div>
-      </div>}
+      {showChat&&<div className="chat"><div className="chat-hd"><div><div className="chat-hd-t">💬 @{norm(partner)}</div><div className="chat-hd-s">Только вы двое</div></div><div className="chat-x" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={i} className={`chat-bubble ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="chat-who">@{norm(m.from)}</div>}{m.voiceData?<VoicePlayer data={m.voiceData} dur={m.voiceDur}/>:<div>{m.text}</div>}</div>)}<div ref={msgsEnd}/></div><div className="chat-input-row"><button className={`chat-mic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="chat-inp" placeholder="Напиши…" value={chatInp} onChange={e=>sChatInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&chatInp.trim()){sendMsg(chatInp.trim());sChatInp("");}}}/><button className="chat-send" disabled={!chatInp.trim()} onClick={()=>{if(chatInp.trim()){sendMsg(chatInp.trim());sChatInp("");}}}><svg width="12" height="12" viewBox="0 0 12 12"><path d="M11 1L1 4.5l4 2 1.5 4L11 1z" fill="white"/></svg></button></div></div>}
 
       {/* RIBBON */}
       <div className="ribbon">
-        <span className="ribbon-heart">💕</span>
-        <div className="ribbon-ava">{normalize(partner)[0]}</div>
-        <div className="ribbon-text">Вместе с <strong><span className="ribbon-at">@</span>{normalize(partner)}</strong></div>
-        <div className="ribbon-actions">
-          <div className={`rbtn ${musicOn?"active":""}`} onClick={toggleMusic}>{musicOn?<MusicBars/>:"🎵"}</div>
-          <div className={`rbtn ${showVibe?"active":""} ${vibeSentFlash?"vibe-sent":""}`} onClick={()=>{setShowVibe(p=>!p);setShowReacts(false);setShowChat(false);}}>📳</div>
-          <div className={`rbtn ${showReacts?"active":""}`} onClick={()=>{setShowReacts(p=>!p);setShowVibe(false);setShowChat(false);}}>🎯</div>
-          <div className={`rbtn ${myKissing?"kiss-active":""}`} onMouseDown={startKiss} onMouseUp={endKiss} onTouchStart={startKiss} onTouchEnd={endKiss}>💋</div>
-          <div style={{position:"relative"}}>
-            <div className={`rbtn ${showChat?"active":""}`} onClick={()=>{setShowChat(p=>!p);setShowReacts(false);setShowVibe(false);}}>💬</div>
-            {unread>0 && !showChat && <div className="rbtn-badge">{unread}</div>}
-          </div>
+        <div className="rib-ava">{norm(partner)[0]}</div>
+        <div className="rib-lbl">С <strong>@{norm(partner)}</strong></div>
+        <div className="rib-sep"/>
+        <div className="rib-btns">
+          <div className={`rb ${musicOn?"on":""}`} onClick={toggleMusic}>{musicOn?<MusicBars/>:"🎵"}</div>
+          <div className={`rb ${showVibe?"on":""}`} onClick={()=>{sVibe(p=>!p);sReacts(false);sChat(false);}}>📳</div>
+          <div className={`rb ${showReacts?"on":""}`} onClick={()=>{sReacts(p=>!p);sVibe(false);sChat(false);}}>🎯</div>
+          <div className={`rb ${myKiss?"kiss-on":""}`} onMouseDown={startKiss} onMouseUp={endKiss} onTouchStart={startKiss} onTouchEnd={endKiss}>💋</div>
+          <div style={{position:"relative"}}><div className={`rb ${showChat?"on":""}`} onClick={()=>{sChat(p=>!p);sReacts(false);sVibe(false);}}>💬</div>{unread>0&&!showChat&&<div className="rb-badge">{unread}</div>}</div>
         </div>
-        <div className="ribbon-disc" onClick={onDisconnect}>Выйти</div>
+        <span className="rib-sep"/>
+        <span className="rib-exit" onClick={onDisc}>Выйти</span>
       </div>
     </div>
   );
 }
 
-/* ══════════════════════════════════════════════════════
-   TELEGRAM HOOK
-══════════════════════════════════════════════════════ */
-function useTelegram() {
-  const tg = typeof window !== 'undefined' ? window.Telegram?.WebApp : null;
-  const isTMA = !!(tg && tg.initData);
-  useEffect(() => { if (!tg || !isTMA) return; tg.ready(); tg.expand(); tg.setHeaderColor('#0d0810'); tg.setBackgroundColor('#0d0810'); }, []);
-  const user = tg?.initDataUnsafe?.user;
-  const username = user?.username || '';
-  const startParam = tg?.initDataUnsafe?.start_param || '';
-  const shareInvite = (myUsername) => {
-    const botName = import.meta.env.VITE_BOT_USERNAME || 'duo_viewer_bot';
-    const url = `https://t.me/${botName}?startapp=${encodeURIComponent(myUsername)}`;
-    const text = `Открой наше приложение 💕`;
-    if (tg && isTMA) tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`);
-    else navigator.clipboard?.writeText(url);
-  };
-  return { isTMA, username, startParam, shareInvite };
+function KissCounter({start}) {
+  const [e,se]=useState(0);
+  useEffect(()=>{if(!start)return;const iv=setInterval(()=>se(Math.floor((Date.now()-start)/1000)),100);return()=>clearInterval(iv);},[start]);
+  const fmt=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  return <div className="kiss-box"><span className="kiss-em">💋</span><div className="kiss-t">{fmt(e)}</div><div className="kiss-l">Держите…</div></div>;
+}
+function VibeRipple({vid,partner,onDone}) {
+  const p=VIBE_PATTERNS.find(x=>x.id===vid)||VIBE_PATTERNS[0];
+  useEffect(()=>{const t=setTimeout(onDone,2300);return()=>clearTimeout(t);},[]);
+  return <div className="vibe-ripple-wrap" style={{"--vc":p.color}}>{[0,320,650].map((delay,i)=><div key={i} className="vibe-ring" style={{position:"absolute",left:"50%",top:"50%","--vd":"1.5s",animationDelay:`${delay}ms`}}/>)}<div className="vibe-icon">{p.emoji}</div><div className="vibe-text">@{norm(partner)}</div><div className="vibe-sub">{p.label}</div></div>;
 }
 
 /* ══════════════════════════════════════════════════════
-   MAIN APP
+   TELEGRAM HOOK
+══════════════════════════════════════════════════════ */
+function useTG() {
+  const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;
+  const ok=!!(tg?.initData);
+  useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#0b0a0f");tg.setBackgroundColor("#0b0a0f");},[]);
+  const user=tg?.initDataUnsafe?.user;
+  const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};
+  return {ok,username:user?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",share};
+}
+
+/* ══════════════════════════════════════════════════════
+   APP
 ══════════════════════════════════════════════════════ */
 export default function App() {
-  const [phase, setPhase]         = useState("connect");
-  const [me, setMe]               = useState("");
-  const [partner, setPartner]     = useState("");
-  const [meInput, setMeInput]     = useState("");
-  const [partnerInput, setPartnerInput] = useState("");
-  const [surpriseInput, setSurpriseInput] = useState("");
-  const [error, setError]         = useState("");
-  const [connectedAt, setConnectedAt] = useState(null);
-  const [copied, setCopied]       = useState(false);
-  const pollRef  = useRef(null);
-  const burstRef = useRef(null);
+  const [phase,sPhase]=useState("connect");
+  const [me,sMe]=useState("");const [partner,sPartner]=useState("");
+  const [meI,sMeI]=useState("");const [ptI,sPtI]=useState("");const [surprise,sSurprise]=useState("");
+  const [err,sErr]=useState("");const [connectedAt,sCA]=useState(null);const [copied,sCopied]=useState(false);
+  const pollRef=useRef(null);const burstRef=useRef(null);
+  const {ok,username,startParam,share}=useTG();
 
-  const { isTMA, username, startParam, shareInvite } = useTelegram();
+  useEffect(()=>{const tag=document.createElement("style");tag.textContent=CSS;document.head.appendChild(tag);return()=>document.head.removeChild(tag);},[]);
+  useEffect(()=>{if(username)sMeI(username);if(startParam)sPtI(startParam);},[username,startParam]);
 
-  useEffect(() => {
-    const tag = document.createElement("style"); tag.textContent = CSS;
-    document.head.appendChild(tag);
-    return () => document.head.removeChild(tag);
-  }, []);
+  const startPoll=useCallback((myN,ptN)=>{
+    pollRef.current=setInterval(async()=>{const d=await loadPresence(ptN);if(d&&d.wants===norm(myN)){clearInterval(pollRef.current);sMe(myN);sPartner(ptN);sPhase("burst");burstRef.current=setTimeout(()=>{sCA(Date.now());sPhase("landing");},3000);}},POLL);
+  },[]);
 
-  useEffect(() => {
-    if (username)   setMeInput(username);
-    if (startParam) setPartnerInput(startParam);
-  }, [username, startParam]);
+  useEffect(()=>()=>{clearInterval(pollRef.current);clearTimeout(burstRef.current);if(me)clearAll(me);amb.stop();},[me]);
 
-  const startPolling = useCallback((myName, pName) => {
-    pollRef.current = setInterval(async () => {
-      const d = await loadPresence(pName);
-      if (d && d.wants === normalize(myName)) {
-        clearInterval(pollRef.current);
-        setMe(myName); setPartner(pName);
-        setPhase("burst");
-        burstRef.current = setTimeout(() => { setConnectedAt(Date.now()); setPhase("landing"); }, 3200);
-      }
-    }, POLL_MS);
-  }, []);
+  const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(norm(myN)===norm(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");await savePresence(myN,ptN);sPhase("waiting");startPoll(myN,ptN);};
+  const disconnect=async()=>{clearInterval(pollRef.current);if(me)await clearAll(me);amb.stop();sPhase("connect");sMe("");sPartner("");sCA(null);sMeI(username||"");sPtI("");sSurprise("");};
 
-  useEffect(() => () => {
-    clearInterval(pollRef.current); clearTimeout(burstRef.current);
-    if (me) clearPresence(me); ambient.stop();
-  }, [me]);
-
-  const handleConnect = async () => {
-    const myName = meInput.trim(), pName = partnerInput.trim();
-    if (!myName || !pName) { setError("Заполни оба поля."); return; }
-    if (normalize(myName) === normalize(pName)) { setError("Нельзя подключиться к самому себе 😊"); return; }
-    setError("");
-    await savePresence(myName, pName);
-    setPhase("waiting");
-    startPolling(myName, pName);
-  };
-
-  const handleDisconnect = async () => {
-    clearInterval(pollRef.current);
-    if (me) await clearPresence(me);
-    ambient.stop();
-    setPhase("connect"); setMe(""); setPartner(""); setConnectedAt(null);
-    setMeInput(username||""); setPartnerInput(""); setSurpriseInput("");
-  };
-
-  if (phase === "landing") return <Landing me={me} partner={partner} surpriseMsg={surpriseInput} connectedAt={connectedAt} onDisconnect={handleDisconnect}/>;
-
-  if (phase === "burst") return (
-    <div className="burst-wrap">
-      <BurstHearts/>
-      <div className="burst-ring"><div className="burst-icon">💖</div></div>
-      <div className="burst-text">Вы вместе</div>
-      <div className="burst-sub"><span>@{normalize(me)}</span> & <span>@{normalize(partner)}</span></div>
-    </div>
-  );
+  if(phase==="landing") return <Landing me={me} partner={partner} surpriseMsg={surprise} connectedAt={connectedAt} onDisc={disconnect}/>;
+  if(phase==="burst") return <div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-title">Вы вместе</div><div className="burst-names"><span>@{norm(me)}</span> & <span>@{norm(partner)}</span></div></div>;
 
   return (
-    <div className="co-wrap"><div className="co-bg"/><Petals/>
+    <div className="co"><div className="co-petals"><Petals/></div>
       <div className="co-card">
-        <span className="co-heart">🌹</span>
-        {phase === "waiting" ? (
-          <div className="co-waiting">
-            <div className="co-orb">💌</div>
-            <div className="co-wait-name">Жду <span>@{normalize(partnerInput)}</span>…</div>
-            <div className="co-wait-sub"><span className="co-wait-dot"/>Попроси <strong>@{normalize(partnerInput)}</strong> открыть приложение и ввести <strong>@{normalize(meInput)}</strong></div>
-            <button className="co-btn" style={{marginTop:8,opacity:.85}} onClick={()=>{shareInvite(meInput.trim());setCopied(true);setTimeout(()=>setCopied(false),2000);}}>
-              {copied?"✓ Ссылка скопирована!":(isTMA?"Отправить ссылку в Telegram ✈️":"Скопировать ссылку 🔗")}
-            </button>
-            <span className="co-cancel" onClick={async()=>{clearInterval(pollRef.current);await clearPresence(meInput.trim());setPhase("connect");}}>Отменить</span>
+        <span className="co-icon">🌹</span>
+        {phase==="waiting"?(
+          <div className="co-wait">
+            <div className="orb">💌</div>
+            <div className="wait-name">Жду <span>@{norm(ptI)}</span>…</div>
+            <div className="wait-info"><span className="wait-dot"/>Попроси <strong style={{color:"var(--fg2)"}}>@{norm(ptI)}</strong> открыть приложение и ввести <strong style={{color:"var(--fg2)"}}>@{norm(meI)}</strong></div>
+            <button className="btn-rose" style={{opacity:.82}} onClick={()=>{share(meI.trim());sCopied(true);setTimeout(()=>sCopied(false),2000);}}>{copied?"✓ Скопировано!":(ok?"Отправить ссылку в Telegram ✈️":"Скопировать ссылку 🔗")}</button>
+            <span className="wait-cancel" onClick={async()=>{clearInterval(pollRef.current);await clearAll(meI.trim());sPhase("connect");}}>Отменить</span>
           </div>
-        ) : (
+        ):(
           <>
-            <h1 className="co-title">Наше приложение,<br/><em>только для двоих</em></h1>
-            <p className="co-sub">Введи ники и оставь сюрприз — оно появится в самом конце.</p>
-            <div className="co-divider"><div className="co-divider-line"/><span style={{opacity:.4,fontSize:13}}>✦</span><div className="co-divider-line"/></div>
-            <div className="co-field">
-              <label className="co-label">Твой ник</label>
-              <div className="co-input-wrap"><span className="co-at">@</span>
-                <input className="co-input" placeholder="username" value={meInput} onChange={e=>{setMeInput(e.target.value);setError("");}} onKeyDown={e=>e.key==="Enter"&&handleConnect()} readOnly={isTMA&&!!username}/>
-              </div>
-              {isTMA&&username&&<p className="co-hint">✓ Получено из Telegram</p>}
+            <h1 className="co-h">Наше приложение,<br/><em>только для двоих</em></h1>
+            <p className="co-sub">Введи ники — и окажитесь в одном пространстве.</p>
+            <div className="divider-line"><span>✦</span></div>
+            <div className="field">
+              <label className="field-label">Твой ник</label>
+              <div className="inp-wrap"><span className="inp-at">@</span><input className="inp" placeholder="username" value={meI} onChange={e=>{sMeI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()} readOnly={ok&&!!username}/></div>
+              {ok&&username&&<p className="field-hint">✓ Получено из Telegram</p>}
             </div>
-            <div className="co-field">
-              <label className="co-label">Ник партнёра</label>
-              <div className="co-input-wrap"><span className="co-at">@</span>
-                <input className="co-input" placeholder="её / его username" value={partnerInput} onChange={e=>{setPartnerInput(e.target.value);setError("");}} onKeyDown={e=>e.key==="Enter"&&handleConnect()}/>
-              </div>
+            <div className="field">
+              <label className="field-label">Ник партнёра</label>
+              <div className="inp-wrap"><span className="inp-at">@</span><input className="inp" placeholder="её или его username" value={ptI} onChange={e=>{sPtI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()}/></div>
             </div>
-            <div className="co-field">
-              <label className="co-label">💌 Сюрприз-послание</label>
-              <textarea className="co-input co-input-plain" placeholder="Появится в конце…" value={surpriseInput} onChange={e=>setSurpriseInput(e.target.value)} style={{resize:"none",height:64,paddingTop:10,lineHeight:1.5}}/>
-              <p className="co-hint">Она увидит это когда долистает до конца 🌹</p>
+            <div className="field">
+              <label className="field-label">💌 Сюрприз-послание</label>
+              <textarea className="textarea" placeholder="Появится когда она долистает до конца…" value={surprise} onChange={e=>sSurprise(e.target.value)}/>
+              <p className="field-hint">Она увидит это только в конце 🌹</p>
             </div>
-            {error && <p className="co-error">{error}</p>}
-            <button className="co-btn" disabled={!meInput.trim()||!partnerInput.trim()} onClick={handleConnect}>Войти вместе 💕</button>
+            {err&&<p className="err">{err}</p>}
+            <button className="btn-rose" disabled={!meI.trim()||!ptI.trim()} onClick={connect}>Войти вместе 💕</button>
           </>
         )}
       </div>
