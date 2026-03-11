@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 /* ─── STORAGE ─── */
 const SB_URL = 'https://zghswvujqwshonctoulx.supabase.co';
@@ -793,6 +793,12 @@ function QASec({pid,me,partner}){
 }
 const PLACE_EMOJIS=["📍","❤️","🌹","🏠","☕","🎭","🏖️","🏔️","🍕","🎵","✨","💋"];
 function MapSec({pid,me}){
+  const[ready,sReady]=useState(false);
+  useEffect(()=>{
+    const check=()=>{if(window.L){sReady(true);}else{setTimeout(check,200);}};
+    check();
+  },[]);
+
   const c=coll("places",pid);
   const[places,sPlaces]=useState([]);
   const[adding,sAdding]=useState(false);
@@ -807,9 +813,9 @@ function MapSec({pid,me}){
   useEffect(()=>{c.load().then(d=>{if(Array.isArray(d))sPlaces(d);});},[]);
   useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>{if(Array.isArray(d))sPlaces(d);}),30000);return()=>clearInterval(iv);},[]);
 
-  // Init Leaflet map
+  // Init Leaflet map (only when ready)
   useEffect(()=>{
-    if(!mapRef.current||mapI.current||!window.L)return;
+    if(!ready||!mapRef.current||mapI.current||!window.L)return;
     const map=window.L.map(mapRef.current,{zoomControl:true}).setView([55.75,37.62],4);
     window.L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{attribution:"©OpenStreetMap ©CartoDB",maxZoom:19}).addTo(map);
     map.on("click",e=>{
@@ -817,7 +823,7 @@ function MapSec({pid,me}){
       sPending({lat:e.latlng.lat,lng:e.latlng.lng});
     });
     mapI.current=map;
-  },[]);
+  },[ready]);
 
   // Sync adding state to ref so map click handler sees it
   useEffect(()=>{mapI._adding=adding;},[adding]);
@@ -847,6 +853,14 @@ function MapSec({pid,me}){
     const updated=places.filter(p=>p.id!==id);
     sPlaces(updated);await c.save(updated);
   };
+
+  if(!ready)return(
+    <div className="sec" id="map">
+      <div className="sec-in" style={{textAlign:"center",padding:"40px 0"}}>
+        <p style={{color:"var(--ink3)",fontSize:12}}>Загрузка карты…</p>
+      </div>
+    </div>
+  );
 
   return(
     <div className="sec" id="map">
@@ -1160,6 +1174,19 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
 }
 
 /* ─── APP ─── */
+class ErrBound extends React.Component {
+  state={err:null};
+  static getDerivedStateFromError(e){return{err:e};}
+  render(){
+    if(this.state.err)return(
+      <div style={{color:'red',padding:20,fontSize:12,wordBreak:'break-all'}}>
+        CRASH: {this.state.err.message}<br/>{this.state.err.stack?.slice(0,300)}
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 export default function App(){
   const[phase,sPhase]=useState("connect");
   const[me,sMe]=useState("");const[partner,sPt]=useState("");
@@ -1177,7 +1204,7 @@ export default function App(){
   const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");await saveP(myN,ptN);sPhase("waiting");startPoll(myN,ptN);};
   const disconnect=async()=>{clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(username||"");sPtI("");sSurpI("");};
 
-  if(phase==="landing")return <Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/>;
+  if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
   if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
 
   return(
