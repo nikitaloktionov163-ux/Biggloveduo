@@ -443,6 +443,26 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .place-note{font-size:11px;color:var(--ink3);margin-top:2px;}
 .place-del{font-size:10px;color:var(--ink3);cursor:pointer;margin-left:auto;padding:2px 5px;border-radius:4px;transition:color .18s;}
 .place-del:hover{color:rgba(240,100,100,.7);}
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:20px;max-width:700px;margin-inline:auto;}
+@media(max-width:560px){.week-grid{grid-template-columns:repeat(7,1fr);gap:4px;}}
+.week-day{display:flex;flex-direction:column;gap:4px;}
+.week-day-hd{text-align:center;padding:6px 2px;border-radius:8px;border:1px solid rgba(255,255,255,.06);}
+.week-day-name{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);}
+.week-day-num{font-family:var(--d);font-size:16px;font-weight:700;color:var(--ink2);line-height:1.1;}
+.week-day-hd.today{background:rgba(193,66,104,.12);border-color:rgba(193,66,104,.35);}
+.week-day-hd.today .week-day-num{color:rgba(193,66,104,.9);}
+.week-plans{display:flex;flex-direction:column;gap:3px;min-height:40px;}
+.week-plan{padding:4px 6px;border-radius:6px;font-size:10px;line-height:1.35;cursor:pointer;transition:opacity .18s;word-break:break-word;}
+.week-plan.mine{background:rgba(193,66,104,.15);border:1px solid rgba(193,66,104,.25);color:var(--ink);}
+.week-plan.theirs{background:rgba(74,184,193,.1);border:1px solid rgba(74,184,193,.2);color:var(--ink);}
+.week-plan:hover{opacity:.7;}
+.week-add-row{display:flex;gap:6px;align-items:center;margin-top:3px;}
+.week-add-inp{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:5px 7px;font-size:10px;color:var(--ink);font-family:var(--b);outline:none;transition:border-color .18s;}
+.week-add-inp:focus{border-color:rgba(193,66,104,.35);}
+.week-add-btn{padding:5px 8px;border-radius:7px;background:rgba(193,66,104,.2);border:1px solid rgba(193,66,104,.3);color:rgba(193,66,104,.9);font-size:11px;cursor:pointer;font-weight:700;transition:all .18s;}
+.week-add-btn:hover{background:rgba(193,66,104,.3);}
+.week-legend{display:flex;gap:14px;justify-content:center;margin-bottom:14px;font-size:10px;color:var(--ink3);}
+.week-legend-dot{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle;}
 .swipe-dots{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
 @media(max-width:560px){.swipe-dots{display:flex;}}
 .swipe-dot{width:5px;height:5px;border-radius:50%;background:rgba(243,239,244,.18);transition:all .3s var(--e1);flex-shrink:0;}
@@ -810,6 +830,79 @@ function MapSec({pid,me}){
     </div>
   );
 }
+const DAY_NAMES=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+function getWeekDays(){const now=new Date();const dow=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(dow===0?6:dow-1));return Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return{date:d.toISOString().split('T')[0],name:DAY_NAMES[i],num:d.getDate(),isToday:d.toISOString().split('T')[0]===now.toISOString().split('T')[0]};});}
+function PlannerSec({pid,me,partner}){
+  const weekKey=()=>{const d=new Date();const dow=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-(dow===0?6:dow-1));return mon.toISOString().split('T')[0];};
+  const[plans,sPlans]=useState({});// {date: [{id,text,by}]}
+  const[inps,sInps]=useState({});// {date: inputValue}
+  const[loading,sLoad]=useState(true);
+  const key=`plan:${pid}:${weekKey()}`;
+
+  const load=async()=>{const d=await db.get(key);sPlans(d||{});sLoad(false);};
+  useEffect(()=>{load();},[]);
+  useEffect(()=>{const iv=setInterval(load,6000);return()=>clearInterval(iv);},[]);
+
+  const addPlan=async(date)=>{
+    const txt=(inps[date]||"").trim();if(!txt)return;
+    const dayPlans=plans[date]||[];
+    const updated={...plans,[date]:[...dayPlans,{id:Date.now(),text:txt,by:me}]};
+    sPlans(updated);await db.set(key,updated);
+    sInps(p=>({...p,[date]:""}));
+  };
+
+  const removePlan=async(date,id)=>{
+    const updated={...plans,[date]:(plans[date]||[]).filter(p=>p.id!==id)};
+    sPlans(updated);await db.set(key,updated);
+  };
+
+  const days=getWeekDays();
+  const totalMine=Object.values(plans).flat().filter(p=>norm(p.by)===norm(me)).length;
+  const totalPt=Object.values(plans).flat().filter(p=>norm(p.by)===norm(partner)).length;
+
+  return(
+    <div className="sec" id="planner">
+      <div className="sec-in">
+        <span className="brow">Планировщик недели</span>
+        <h2 className="sh">Эта <em>неделя</em></h2>
+        <p className="sp">Добавляй планы на каждый день — оба видите расписание друг друга.</p>
+        {!loading&&<>
+          <div className="week-legend">
+            <span><span className="week-legend-dot" style={{background:"rgba(193,66,104,.5)"}}/>@{n(me)} ({totalMine})</span>
+            <span><span className="week-legend-dot" style={{background:"rgba(74,184,193,.5)"}}/>@{n(partner)} ({totalPt})</span>
+          </div>
+          <div className="week-grid">
+            {days.map(day=>{
+              const dayPlans=(plans[day.date]||[]);
+              return(
+                <div key={day.date} className="week-day">
+                  <div className={`week-day-hd ${day.isToday?"today":""}`}>
+                    <div className="week-day-name">{day.name}</div>
+                    <div className="week-day-num">{day.num}</div>
+                  </div>
+                  <div className="week-plans">
+                    {dayPlans.map(p=>(
+                      <div key={p.id} className={`week-plan ${norm(p.by)===norm(me)?"mine":"theirs"}`}
+                        onClick={()=>norm(p.by)===norm(me)&&removePlan(day.date,p.id)}
+                        title={norm(p.by)===norm(me)?"Нажми чтобы удалить":""}>
+                        {p.text}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="week-add-row">
+                    <input className="week-add-inp" placeholder="+" value={inps[day.date]||""} onChange={e=>sInps(p=>({...p,[day.date]:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addPlan(day.date)}/>
+                    <button className="week-add-btn" onClick={()=>addPlan(day.date)}>+</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>}
+        {loading&&<p style={{fontSize:12,color:"var(--ink3)",textAlign:"center"}}>Загрузка…</p>}
+      </div>
+    </div>
+  );
+}
 function KissBox({start}){const[e,se]=useState(0);useEffect(()=>{if(!start)return;const iv=setInterval(()=>se(Math.floor((Date.now()-start)/1000)),100);return()=>clearInterval(iv);},[start]);const f=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;return <div className="kiss-box"><span className="kiss-em">💋</span><div className="kiss-t">{f(e)}</div><div className="kiss-l">Держите…</div></div>;}
 
 /* ─── VIBE RIPPLE ─── */
@@ -819,7 +912,7 @@ function VibeRipple({vid,partner,onDone}){const p=VIBES.find(x=>x.id===vid)||VIB
 function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",photoUrl:u?.photo_url||null,share};}
 
 /* ─── LANDING ─── */
-const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"}];
+const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"}];
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[stuck,sS]=useState(false);const[active,sA]=useState("hero");
@@ -859,7 +952,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   useEffect(()=>{if(chat)sUnread(0);},[chat]);
 
   const scrollTo=id=>sRefs.current[id]?.scrollIntoView({behavior:"smooth"});
-  const SWIPE_ORDER=["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","map","promises"];
+  const SWIPE_ORDER=["hero","profile","mood","qa","timer","planner","calendar","moments","dreams","wishes","travel","map","promises"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
@@ -908,6 +1001,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <section id="timer" ref={el=>sRefs.current.timer=el} className="sec"><div className="sec-in"><span className="brow">Счётчик любви</span><h2 className="sh">Сколько мы <em>вместе</em></h2><p className="sp">Каждая секунда на счету.</p>{sd?<LoveTimer start={sd}/>:<p style={{fontSize:12,color:"var(--ink3)",marginBottom:20}}>Укажи дату начала ↓</p>}<div className="date-box"><span className="date-lbl">Вместе с</span><input className="date-inp" type="date" value={sd} onChange={e=>{sSD(e.target.value);localStorage.setItem("duo_sd",e.target.value);}}/></div>{sd&&daysT!==null&&<div className="milestones">{milestones.map(ms=><div key={ms.n} className={`ms ${daysT>=ms.n?"hit":""}`}>{daysT>=ms.n?"✓ ":""}{ms.l}</div>)}</div>}</div></section>
 
       <div className="hr"/>
+      <section id="planner" ref={el=>sRefs.current.planner=el}><PlannerSec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
       <section ref={el=>sRefs.current.calendar=el}><CalSec pid={pid} me={me}/></section>
       <div className="hr"/>
       <section ref={el=>sRefs.current.moments=el}><MomSec pid={pid} me={me}/></section>
@@ -938,7 +1033,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}</div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots">{["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","map","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots">{["hero","profile","mood","qa","timer","planner","calendar","moments","dreams","wishes","travel","map","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
