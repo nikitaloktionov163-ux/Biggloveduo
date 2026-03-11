@@ -382,6 +382,23 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .empty{padding:28px 0;text-align:center;font-size:12px;font-weight:300;color:var(--ink3);grid-column:1/-1;line-height:1.7;}
 
 /* footer */
+.prof-wrap{max-width:480px;margin-inline:auto;text-align:center;}
+.prof-avs{display:flex;align-items:center;justify-content:center;gap:22px;margin-bottom:14px;}
+.prof-av{width:68px;height:68px;border-radius:50%;border:2px solid rgba(193,66,104,.3);object-fit:cover;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;text-transform:uppercase;box-shadow:0 0 20px rgba(193,66,104,.12);}
+.prof-av-me{background:linear-gradient(135deg,var(--r),#6a1128);}
+.prof-av-pt{background:linear-gradient(135deg,#4a6fa5,#1a3a6a);}
+.prof-heart{font-size:22px;animation:hb 2.4s ease-in-out infinite;filter:drop-shadow(0 0 8px rgba(193,66,104,.5));}
+.prof-names{display:flex;gap:40px;justify-content:center;font-size:11px;font-weight:500;color:var(--ink3);margin-bottom:20px;}
+.prof-since{font-size:12px;color:var(--ink3);margin-bottom:20px;}
+.prof-since b{color:rgba(193,66,104,.75);}
+.prof-stats{display:flex;gap:clamp(12px,4vw,40px);justify-content:center;margin-bottom:22px;flex-wrap:wrap;}
+.prof-stat-n{font-family:var(--d);font-size:clamp(28px,5vw,42px);font-weight:700;letter-spacing:-.04em;line-height:1;color:rgba(193,66,104,.85);}
+.prof-stat-l{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);margin-top:3px;}
+.prof-bio{font-family:var(--d);font-size:clamp(13px,2vw,17px);font-style:italic;font-weight:400;color:var(--ink2);line-height:1.78;margin-bottom:20px;max-width:320px;margin-inline:auto;}
+.prof-edit-btn{padding:7px 18px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--ink2);font-family:var(--b);font-size:11px;font-weight:500;cursor:pointer;transition:all .2s;}
+.prof-edit-btn:hover{background:rgba(255,255,255,.09);border-color:rgba(193,66,104,.28);}
+.prof-form{background:rgba(255,255,255,.025);border:1px solid rgba(193,66,104,.15);border-radius:18px;padding:16px;margin-top:14px;display:flex;flex-direction:column;gap:7px;text-align:left;animation:up .28s var(--e1) both;}
+.prof-char{font-size:9.5px;color:var(--ink3);text-align:right;margin-top:-4px;}
 .swipe-dots{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
 @media(max-width:560px){.swipe-dots{display:flex;}}
 .swipe-dot{width:5px;height:5px;border-radius:50%;background:rgba(243,239,244,.18);transition:all .3s var(--e1);flex-shrink:0;}
@@ -516,18 +533,68 @@ function PromisesSec({pid,me}){
 }
 
 /* ─── KISS COUNTER ─── */
+function ProfileSec({pid,me,partner,daysT,tgPhotoUrl}){
+  const c=coll("prof",pid);
+  const[data,sData]=useState(null);
+  const[editing,sEditing]=useState(false);
+  const[bioInp,sBio]=useState("");
+  const[sdInp,sSd]=useState("");
+  useEffect(()=>{c.load().then(d=>{if(d&&d.bio!==undefined){sData(d);sBio(d.bio||"");sSd(d.startDate||"");}});},[]);
+  useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>{if(d&&d.bio!==undefined)sData(d);}),30000);return()=>clearInterval(iv);},[]);
+  const save=async()=>{const upd={bio:bioInp.trim(),startDate:sdInp,updBy:me};sData(upd);await c.save(upd);if(sdInp)localStorage.setItem("duo_sd",sdInp);sEditing(false);};
+  const bio=data?.bio||"";
+  const startDate=data?.startDate||localStorage.getItem("duo_sd")||"";
+  const since=startDate?new Date(startDate).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"}):"";
+  const meInitial=(n(me)[0]||"?").toUpperCase();
+  const ptInitial=(n(partner)[0]||"?").toUpperCase();
+  return(
+    <div className="sec" id="profile">
+      <div className="sec-in">
+        <span className="brow">Профиль пары</span>
+        <h2 className="sh"><em>Ваша</em> история</h2>
+        <div className="prof-wrap">
+          <div className="prof-avs">
+            {tgPhotoUrl?<img className="prof-av" src={tgPhotoUrl} alt={me}/>:<div className="prof-av prof-av-me">{meInitial}</div>}
+            <span className="prof-heart">💕</span>
+            <div className="prof-av prof-av-pt">{ptInitial}</div>
+          </div>
+          <div className="prof-names"><span>@{n(me)}</span><span>@{n(partner)}</span></div>
+          {since&&<div className="prof-since">Вместе с <b>{since}</b></div>}
+          {daysT!==null&&daysT>0&&<div className="prof-stats">
+            <div><div className="prof-stat-n">{daysT}</div><div className="prof-stat-l">дней</div></div>
+            <div><div className="prof-stat-n">{Math.floor(daysT/7)}</div><div className="prof-stat-l">недель</div></div>
+            <div><div className="prof-stat-n">{Math.floor(daysT/30)}</div><div className="prof-stat-l">месяцев</div></div>
+          </div>}
+          {bio&&!editing&&<div className="prof-bio">"{bio}"</div>}
+          {!editing&&<button className="prof-edit-btn" onClick={()=>sEditing(true)}>✏️ {bio?"Редактировать":"Добавить описание"}</button>}
+          {editing&&<div className="prof-form">
+            <label className="label">Начало отношений</label>
+            <input className="fi fi-date" type="date" value={sdInp} onChange={e=>sSd(e.target.value)}/>
+            <label className="label">О вас двоих</label>
+            <textarea className="ta2" placeholder="Как вы познакомились, что вас объединяет…" value={bioInp} onChange={e=>sBio(e.target.value.slice(0,120))} rows={3}/>
+            <div className="prof-char">{bioInp.length}/120</div>
+            <div className="row" style={{justifyContent:"flex-end",gap:6}}>
+              <button className="prof-edit-btn" onClick={()=>sEditing(false)}>Отмена</button>
+              <button className="fa" onClick={save}>Сохранить</button>
+            </div>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
 function KissBox({start}){const[e,se]=useState(0);useEffect(()=>{if(!start)return;const iv=setInterval(()=>se(Math.floor((Date.now()-start)/1000)),100);return()=>clearInterval(iv);},[start]);const f=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;return <div className="kiss-box"><span className="kiss-em">💋</span><div className="kiss-t">{f(e)}</div><div className="kiss-l">Держите…</div></div>;}
 
 /* ─── VIBE RIPPLE ─── */
 function VibeRipple({vid,partner,onDone}){const p=VIBES.find(x=>x.id===vid)||VIBES[0];useEffect(()=>{const t=setTimeout(onDone,2400);return()=>clearTimeout(t);},[]);return <div className="vripple" style={{"--vc":p.color||"rgba(193,66,104,.6)"}}>{[0,320,660].map((d,i)=><div key={i} className="vring" style={{"--vd":"1.55s",animationDelay:`${d}ms`}}/>)}<div className="vripple-i">{p.icon}</div><div className="vripple-n">@{n(partner)}</div><div className="vripple-s">{p.name}</div></div>;}
 
 /* ─── TG HOOK ─── */
-function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",share};}
+function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",photoUrl:u?.photo_url||null,share};}
 
 /* ─── LANDING ─── */
-const SECS=[{id:"hero",l:"Главная"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"promises",l:"Обещания"}];
+const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"promises",l:"Обещания"}];
 
-function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
+function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[stuck,sS]=useState(false);const[active,sA]=useState("hero");
   const[sd,sSD]=useState(()=>localStorage.getItem("duo_sd")||"");
   const[pSc,sPSc]=useState(null);const[pCu,sPCu]=useState(null);
@@ -563,7 +630,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
   useEffect(()=>{if(chat)sUnread(0);},[chat]);
 
   const scrollTo=id=>sRefs.current[id]?.scrollIntoView({behavior:"smooth"});
-  const SWIPE_ORDER=["hero","timer","calendar","moments","dreams","wishes","travel","promises"];
+  const SWIPE_ORDER=["hero","profile","timer","calendar","moments","dreams","wishes","travel","promises"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
@@ -603,6 +670,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
       </section>
 
       <div className="hr"/>
+      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl}/></section>
+      <div className="hr"/>
       <section id="timer" ref={el=>sRefs.current.timer=el} className="sec"><div className="sec-in"><span className="brow">Счётчик любви</span><h2 className="sh">Сколько мы <em>вместе</em></h2><p className="sp">Каждая секунда на счету.</p>{sd?<LoveTimer start={sd}/>:<p style={{fontSize:12,color:"var(--ink3)",marginBottom:20}}>Укажи дату начала ↓</p>}<div className="date-box"><span className="date-lbl">Вместе с</span><input className="date-inp" type="date" value={sd} onChange={e=>{sSD(e.target.value);localStorage.setItem("duo_sd",e.target.value);}}/></div>{sd&&daysT!==null&&<div className="milestones">{milestones.map(ms=><div key={ms.n} className={`ms ${daysT>=ms.n?"hit":""}`}>{daysT>=ms.n?"✓ ":""}{ms.l}</div>)}</div>}</div></section>
 
       <div className="hr"/>
@@ -634,7 +703,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}</div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots">{["hero","timer","calendar","moments","dreams","wishes","travel","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots">{["hero","profile","timer","calendar","moments","dreams","wishes","travel","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         <div className="rib-text">С <b>@{n(partner)}</b></div>
@@ -660,7 +729,7 @@ export default function App(){
   const[meI,sMeI]=useState("");const[ptI,sPtI]=useState("");const[surpI,sSurpI]=useState("");
   const[err,sErr]=useState("");const[ca,sCA]=useState(null);const[copied,sCopied]=useState(false);
   const poll=useRef(null);const burst=useRef(null);
-  const{ok,username,startParam,share}=useTG();
+  const{ok,username,startParam,photoUrl,share}=useTG();
 
   useEffect(()=>{const s=document.createElement("style");s.textContent=CSS;document.head.appendChild(s);return()=>document.head.removeChild(s);},[]);
   useEffect(()=>{if(username)sMeI(username);if(startParam)sPtI(startParam);},[username,startParam]);
@@ -671,7 +740,7 @@ export default function App(){
   const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");await saveP(myN,ptN);sPhase("waiting");startPoll(myN,ptN);};
   const disconnect=async()=>{clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(username||"");sPtI("");sSurpI("");};
 
-  if(phase==="landing")return <Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} onDisc={disconnect}/>;
+  if(phase==="landing")return <Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/>;
   if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
 
   return(
