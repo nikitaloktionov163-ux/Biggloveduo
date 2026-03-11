@@ -418,6 +418,19 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .mood-hist-date{font-size:11px;color:var(--ink3);flex:1;}
 .mood-hist-emojis{display:flex;gap:16px;font-size:22px;}
 .rib-mood{font-size:15px;line-height:1;margin-left:2px;}
+.qa-today{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:20px;padding:22px;max-width:560px;margin-inline:auto;margin-bottom:20px;}
+.qa-q{font-family:var(--d);font-size:clamp(15px,2.5vw,20px);font-style:italic;font-weight:400;color:var(--ink);line-height:1.65;text-align:center;margin-bottom:18px;}
+.qa-q-small{font-family:var(--d);font-size:13px;font-style:italic;color:var(--ink2);margin-bottom:10px;text-align:center;}
+.qa-answers{display:flex;flex-direction:column;gap:8px;}
+.qa-ans-card{padding:12px 14px;border-radius:14px;}
+.qa-ans-card.mine{background:rgba(193,66,104,.08);border:1px solid rgba(193,66,104,.2);}
+.qa-ans-card.theirs{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);}
+.qa-ans-who{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(193,66,104,.6);margin-bottom:5px;}
+.qa-ans-text{font-size:13px;font-weight:300;color:var(--ink2);line-height:1.65;}
+.qa-waiting{font-size:12px;color:var(--ink3);text-align:center;padding:14px;background:rgba(255,255,255,.02);border-radius:12px;border:1px dashed rgba(255,255,255,.08);}
+.qa-archive{max-width:560px;margin-inline:auto;}
+.qa-archive summary{font-size:11px;font-weight:600;color:var(--ink3);cursor:pointer;padding:10px 0;text-align:center;list-style:none;}
+.qa-archive-item{padding:16px 0;border-top:1px solid rgba(255,255,255,.04);}
 .swipe-dots{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
 @media(max-width:560px){.swipe-dots{display:flex;}}
 .swipe-dot{width:5px;height:5px;border-radius:50%;background:rgba(243,239,244,.18);transition:all .3s var(--e1);flex-shrink:0;}
@@ -662,6 +675,44 @@ function MoodSec({pid,me,partner}){
     </div>
   );
 }
+const QUESTIONS=["Что тебе больше всего нравится в нас двоих?","Какой момент нашей совместной жизни ты хотел(а) бы пережить снова?","Чем ты восхищаешься во мне больше всего?","Какое наше совместное приключение ты хочешь обязательно повторить?","Что делает тебя счастливым(ой) в наших отношениях?","Какую черту моего характера ты ценишь больше всего?","О чём ты мечтаешь для нас на следующий год?","Какую традицию ты хотел(а) бы завести в наших отношениях?","Что я делаю, что заставляет тебя улыбаться?","Если бы у нас был один день без забот — как бы ты его провёл(а)?","Что для тебя значит чувствовать себя любимым(ой)?","Какой подарок от меня запомнился тебе больше всего?","Чему ты научился(ась) у меня?","Какое место ты хочешь посетить вместе со мной?","Что ты хочешь, чтобы я знал(а) о тебе?","Как ты понял(а), что влюбился(ась)?","Какой твой любимый способ провести время вдвоём?","Что для тебя важнее всего в отношениях?","Какую песню ты ассоциируешь с нами?","Что бы ты хотел(а) изменить в себе ради нас?","Как ты видишь нас через 5 лет?","Что тебя больше всего удивляет во мне?","Какой был наш самый смешной момент?","За что ты благодарен(на) мне прямо сейчас?","Что я могу сделать, чтобы сделать тебя счастливее?","Опиши меня тремя словами.","Какой комплимент от меня ты вспоминаешь чаще всего?","Что ты чувствуешь, когда мы вместе?","Если бы мы написали книгу о нас — как бы она называлась?","Что бы ты сделал(а) для меня, если бы я был(а) расстроен(а)?"];
+const getTodayQ=()=>QUESTIONS[Math.floor(Date.now()/86400000)%QUESTIONS.length];
+function QASec({pid,me,partner}){
+  const today=new Date().toISOString().split('T')[0];
+  const[entries,sE]=useState([]);
+  const[inp,sInp]=useState("");
+  useEffect(()=>{db.get(`qa:${pid}`).then(d=>sE(d||[]));},[]);
+  useEffect(()=>{const iv=setInterval(()=>db.get(`qa:${pid}`).then(d=>sE(d||[])),8000);return()=>clearInterval(iv);},[]);
+  const todayQ=getTodayQ();
+  const todayEntry=entries.find(e=>e.date===today)||{date:today,question:todayQ,answers:{}};
+  const myAns=todayEntry.answers[norm(me)];
+  const ptAns=todayEntry.answers[norm(partner)];
+  const submit=async()=>{
+    if(!inp.trim())return;
+    const entry={...todayEntry,answers:{...todayEntry.answers,[norm(me)]:{text:inp.trim(),ts:Date.now()}}};
+    const updated=[entry,...entries.filter(e=>e.date!==today)].slice(0,30);
+    sE(updated);await db.set(`qa:${pid}`,updated);sInp("");
+  };
+  const archive=entries.filter(e=>e.date!==today&&e.answers[norm(me)]&&e.answers[norm(partner)]).slice(0,7);
+  return(
+    <div className="sec" id="qa">
+      <div className="sec-in">
+        <span className="brow">Вопрос дня</span>
+        <h2 className="sh">Узнаём <em>друг друга</em></h2>
+        <p className="sp">Каждый день — новый вопрос. Ответ партнёра появится только когда ответишь сам(а).</p>
+        <div className="qa-today">
+          <div className="qa-q">«{todayQ}»</div>
+          {!myAns&&<div style={{display:"flex",flexDirection:"column",gap:8}}><textarea className="ta2" placeholder="Твой ответ…" value={inp} onChange={e=>sInp(e.target.value)} rows={3}/><div style={{textAlign:"right"}}><button className="fa" disabled={!inp.trim()} onClick={submit}>Ответить</button></div></div>}
+          {myAns&&<div className="qa-answers">
+            <div className="qa-ans-card mine"><div className="qa-ans-who">@{n(me)}</div><div className="qa-ans-text">{myAns.text}</div></div>
+            {ptAns?<div className="qa-ans-card theirs"><div className="qa-ans-who">@{n(partner)}</div><div className="qa-ans-text">{ptAns.text}</div></div>:<div className="qa-waiting">⏳ Ждём ответа @{n(partner)}…</div>}
+          </div>}
+        </div>
+        {archive.length>0&&<details className="qa-archive"><summary>Предыдущие вопросы ({archive.length})</summary>{archive.map((e,i)=><div key={i} className="qa-archive-item"><div className="qa-q-small">«{e.question}»</div><div className="qa-answers" style={{marginTop:8}}><div className="qa-ans-card mine"><div className="qa-ans-who">@{n(me)}</div><div className="qa-ans-text">{e.answers[norm(me)]?.text}</div></div><div className="qa-ans-card theirs"><div className="qa-ans-who">@{n(partner)}</div><div className="qa-ans-text">{e.answers[norm(partner)]?.text}</div></div></div></div>)}</details>}
+      </div>
+    </div>
+  );
+}
 function KissBox({start}){const[e,se]=useState(0);useEffect(()=>{if(!start)return;const iv=setInterval(()=>se(Math.floor((Date.now()-start)/1000)),100);return()=>clearInterval(iv);},[start]);const f=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;return <div className="kiss-box"><span className="kiss-em">💋</span><div className="kiss-t">{f(e)}</div><div className="kiss-l">Держите…</div></div>;}
 
 /* ─── VIBE RIPPLE ─── */
@@ -671,7 +722,7 @@ function VibeRipple({vid,partner,onDone}){const p=VIBES.find(x=>x.id===vid)||VIB
 function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",photoUrl:u?.photo_url||null,share};}
 
 /* ─── LANDING ─── */
-const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"promises",l:"Обещания"}];
+const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"promises",l:"Обещания"}];
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[stuck,sS]=useState(false);const[active,sA]=useState("hero");
@@ -711,7 +762,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   useEffect(()=>{if(chat)sUnread(0);},[chat]);
 
   const scrollTo=id=>sRefs.current[id]?.scrollIntoView({behavior:"smooth"});
-  const SWIPE_ORDER=["hero","profile","mood","timer","calendar","moments","dreams","wishes","travel","promises"];
+  const SWIPE_ORDER=["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","promises"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
@@ -755,6 +806,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="hr"/>
       <section id="mood" ref={el=>sRefs.current.mood=el}><MoodSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
+      <section id="qa" ref={el=>sRefs.current.qa=el}><QASec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
       <section id="timer" ref={el=>sRefs.current.timer=el} className="sec"><div className="sec-in"><span className="brow">Счётчик любви</span><h2 className="sh">Сколько мы <em>вместе</em></h2><p className="sp">Каждая секунда на счету.</p>{sd?<LoveTimer start={sd}/>:<p style={{fontSize:12,color:"var(--ink3)",marginBottom:20}}>Укажи дату начала ↓</p>}<div className="date-box"><span className="date-lbl">Вместе с</span><input className="date-inp" type="date" value={sd} onChange={e=>{sSD(e.target.value);localStorage.setItem("duo_sd",e.target.value);}}/></div>{sd&&daysT!==null&&<div className="milestones">{milestones.map(ms=><div key={ms.n} className={`ms ${daysT>=ms.n?"hit":""}`}>{daysT>=ms.n?"✓ ":""}{ms.l}</div>)}</div>}</div></section>
 
       <div className="hr"/>
@@ -786,7 +839,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}</div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots">{["hero","profile","mood","timer","calendar","moments","dreams","wishes","travel","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots">{["hero","profile","mood","qa","timer","calendar","moments","dreams","wishes","travel","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
