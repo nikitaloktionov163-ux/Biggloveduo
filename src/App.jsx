@@ -1191,13 +1191,14 @@ class ErrBound extends React.Component {
 export default function App(){
   const[phase,sPhase]=useState("connect");
   const[me,sMe]=useState("");const[partner,sPt]=useState("");
-  const[meI,sMeI]=useState("");const[ptI,sPtI]=useState("");const[surpI,sSurpI]=useState("");
+  const{ok,username,startParam,photoUrl,share}=useTG();
+  const[meI,sMeI]=useState(()=>username||"");
+  const[ptI,sPtI]=useState(()=>startParam||"");
+  const[surpI,sSurpI]=useState("");
   const[err,sErr]=useState("");const[ca,sCA]=useState(null);const[copied,sCopied]=useState(false);
   const poll=useRef(null);const burst=useRef(null);
-  const{ok,username,startParam,photoUrl,share}=useTG();
 
   useEffect(()=>{const s=document.createElement("style");s.textContent=CSS;document.head.appendChild(s);return()=>document.head.removeChild(s);},[]);
-  useEffect(()=>{if(username)sMeI(username);if(startParam)sPtI(startParam);},[username,startParam]);
 
   const startPoll=useCallback((myN,ptN)=>{poll.current=setInterval(async()=>{const d=await loadP(ptN);if(d&&d.wants===n(myN)){clearInterval(poll.current);sMe(myN);sPt(ptN);sPhase("burst");burst.current=setTimeout(()=>{sCA(Date.now());sPhase("landing");},3000);}},1500);},[]);
   useEffect(()=>()=>{clearInterval(poll.current);clearTimeout(burst.current);if(me)clearU(me);amb.stop();},[me]);
