@@ -26,6 +26,10 @@ const clearU=me=>["p","st","mom","cal","wish","drm","trv"].forEach(k=>db.del(`${
 const saveSt=(me,d)=>db.set(`st:${n(me)}`,{...d,ts:Date.now()});
 const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 
+/* ─── THEMES ─── */
+const THEMES={midnight:{r:'#c14268',r2:'#9a2f4e',c0:'#07060d',c1:'#0e0c18'},blush:{r:'#d4687a',r2:'#a84050',c0:'#0f0810',c1:'#180d14'},golden:{r:'#c9a44e',r2:'#9a7a30',c0:'#0a0800',c1:'#110e00'},ocean:{r:'#4ab8c1',r2:'#2a8890',c0:'#050d12',c1:'#0a1620'}};
+const applyTheme=(id)=>{const t=THEMES[id]||THEMES.midnight;const root=document.documentElement;root.style.setProperty('--r',t.r);root.style.setProperty('--r2',t.r2);root.style.setProperty('--c0',t.c0);root.style.setProperty('--c1',t.c1);document.body.style.background=t.c0;};
+
 /* ─── AMBIENT ─── */
 class Amb { start(){if(this.ctx)return;this.ctx=new(window.AudioContext||window.webkitAudioContext)();const m=this.ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.04,this.ctx.currentTime+4);m.connect(this.ctx.destination);[[196,.38],[246.9,.28],[329.6,.18],[392,.09]].forEach(([f,v])=>{const o=this.ctx.createOscillator(),g=this.ctx.createGain(),l=this.ctx.createOscillator(),lg=this.ctx.createGain();o.type="sine";o.frequency.value=f;l.type="sine";l.frequency.value=.04+Math.random()*.035;lg.gain.value=1.1;l.connect(lg);lg.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();l.start();});this.m=m;}stop(){if(!this.ctx)return;try{this.ctx.close();}catch(e){}this.ctx=null;}}
 const amb=new Amb();
@@ -399,6 +403,10 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .prof-edit-btn:hover{background:rgba(255,255,255,.09);border-color:rgba(193,66,104,.28);}
 .prof-form{background:rgba(255,255,255,.025);border:1px solid rgba(193,66,104,.15);border-radius:18px;padding:16px;margin-top:14px;display:flex;flex-direction:column;gap:7px;text-align:left;animation:up .28s var(--e1) both;}
 .prof-char{font-size:9.5px;color:var(--ink3);text-align:right;margin-top:-4px;}
+.theme-row{display:flex;gap:8px;justify-content:center;margin-top:14px;}
+.theme-dot{width:22px;height:22px;border-radius:50%;background:var(--tc);cursor:pointer;border:2px solid transparent;transition:all .2s var(--e2);}
+.theme-dot:hover{transform:scale(1.15);}
+.theme-dot.on{border-color:rgba(255,255,255,.6);box-shadow:0 0 10px var(--tc);}
 .swipe-dots{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
 @media(max-width:560px){.swipe-dots{display:flex;}}
 .swipe-dot{width:5px;height:5px;border-radius:50%;background:rgba(243,239,244,.18);transition:all .3s var(--e1);flex-shrink:0;}
@@ -533,7 +541,7 @@ function PromisesSec({pid,me}){
 }
 
 /* ─── KISS COUNTER ─── */
-function ProfileSec({pid,me,partner,daysT,tgPhotoUrl}){
+function ProfileSec({pid,me,partner,daysT,tgPhotoUrl,currentTheme,onThemeChange}){
   const c=coll("prof",pid);
   const[data,sData]=useState(null);
   const[editing,sEditing]=useState(false);
@@ -542,6 +550,7 @@ function ProfileSec({pid,me,partner,daysT,tgPhotoUrl}){
   useEffect(()=>{c.load().then(d=>{if(d&&d.bio!==undefined){sData(d);sBio(d.bio||"");sSd(d.startDate||"");}});},[]);
   useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>{if(d&&d.bio!==undefined)sData(d);}),30000);return()=>clearInterval(iv);},[]);
   const save=async()=>{const upd={bio:bioInp.trim(),startDate:sdInp,updBy:me};sData(upd);await c.save(upd);if(sdInp)localStorage.setItem("duo_sd",sdInp);sEditing(false);};
+  const saveTheme=async(id)=>{applyTheme(id);onThemeChange(id);await db.set(`theme:${pid}`,id);};
   const bio=data?.bio||"";
   const startDate=data?.startDate||localStorage.getItem("duo_sd")||"";
   const since=startDate?new Date(startDate).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"}):"";
@@ -565,6 +574,7 @@ function ProfileSec({pid,me,partner,daysT,tgPhotoUrl}){
             <div><div className="prof-stat-n">{Math.floor(daysT/7)}</div><div className="prof-stat-l">недель</div></div>
             <div><div className="prof-stat-n">{Math.floor(daysT/30)}</div><div className="prof-stat-l">месяцев</div></div>
           </div>}
+          <div className="theme-row">{Object.entries(THEMES).map(([id,t])=><div key={id} className={`theme-dot ${currentTheme===id?"on":""}`} style={{"--tc":t.r}} onClick={()=>saveTheme(id)} title={id}/>)}</div>
           {bio&&!editing&&<div className="prof-bio">"{bio}"</div>}
           {!editing&&<button className="prof-edit-btn" onClick={()=>sEditing(true)}>✏️ {bio?"Редактировать":"Добавить описание"}</button>}
           {editing&&<div className="prof-form">
@@ -596,6 +606,7 @@ const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[stuck,sS]=useState(false);const[active,sA]=useState("hero");
+  const[currentTheme,sCurrentTheme]=useState("midnight");
   const[sd,sSD]=useState(()=>localStorage.getItem("duo_sd")||"");
   const[pSc,sPSc]=useState(null);const[pCu,sPCu]=useState(null);
   const[reacts,sReacts]=useState(false);const[floats,sF]=useState([]);const rid=useRef(0);
@@ -607,7 +618,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[surp,sSurp]=useState(false);const sFired=useRef(false);
   const scroll=useRef(null);const sRefs=useRef({});const st=useRef({scroll:0,cursor:null});const saveT=useRef(0);
   const pid=pair(me,partner);
-
+  useEffect(()=>{db.get(`theme:${pid}`).then(t=>{if(t){applyTheme(t);sCurrentTheme(t);}});},[pid]);
   const flush=useCallback(async(extra={})=>{const now=Date.now();if(now-saveT.current<380)return;saveT.current=now;await saveSt(me,{scroll:st.current.scroll,cursor:st.current.cursor,...extra});},[me]);
 
   useEffect(()=>{const el=scroll.current;if(!el)return;const fn=()=>{const p=el.scrollTop/(el.scrollHeight-el.clientHeight);st.current.scroll=isNaN(p)?0:p;sS(el.scrollTop>14);for(const[id,ref]of Object.entries(sRefs.current)){if(!ref)continue;const r=ref.getBoundingClientRect();if(r.top<=el.clientHeight*.38&&r.bottom>0){sA(id);break;}}if(!sFired.current&&st.current.scroll>0.94){sFired.current=true;sSurp(true);}flush();};el.addEventListener("scroll",fn,{passive:true});return()=>el.removeEventListener("scroll",fn);},[flush]);
@@ -622,9 +633,10 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       if(d.msg&&d.msg.ts>lastTs.current){lastTs.current=d.msg.ts;sMsgs(p=>[...p,{...d.msg,from:partner}]);if(!chat)sUnread(u=>u+1);}
       const pk=d.kissing||false;sPK(pk);if(pk&&myKiss&&!kissStart)sKS(d.kissTs||Date.now());
       if(d.vibe&&d.vibe.ts>lastVT.current){lastVT.current=d.vibe.ts;const pv=VIBES.find(v=>v.id===d.vibe.id);if(pv&&navigator.vibrate)navigator.vibrate(pv.pat);sVR({id:d.vibe.id,ts:d.vibe.ts});}
+      const t=await db.get(`theme:${pid}`);if(t&&t!==currentTheme){applyTheme(t);sCurrentTheme(t);}
     },1500);
     return()=>clearInterval(iv);
-  },[partner,chat,myKiss,kissStart]);
+  },[partner,chat,myKiss,kissStart,pid,currentTheme]);
 
   useEffect(()=>{msEnd.current?.scrollIntoView({behavior:"smooth"});},[msgs,chat]);
   useEffect(()=>{if(chat)sUnread(0);},[chat]);
@@ -670,7 +682,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       </section>
 
       <div className="hr"/>
-      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl}/></section>
+      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl} currentTheme={currentTheme} onThemeChange={sCurrentTheme}/></section>
       <div className="hr"/>
       <section id="timer" ref={el=>sRefs.current.timer=el} className="sec"><div className="sec-in"><span className="brow">Счётчик любви</span><h2 className="sh">Сколько мы <em>вместе</em></h2><p className="sp">Каждая секунда на счету.</p>{sd?<LoveTimer start={sd}/>:<p style={{fontSize:12,color:"var(--ink3)",marginBottom:20}}>Укажи дату начала ↓</p>}<div className="date-box"><span className="date-lbl">Вместе с</span><input className="date-inp" type="date" value={sd} onChange={e=>{sSD(e.target.value);localStorage.setItem("duo_sd",e.target.value);}}/></div>{sd&&daysT!==null&&<div className="milestones">{milestones.map(ms=><div key={ms.n} className={`ms ${daysT>=ms.n?"hit":""}`}>{daysT>=ms.n?"✓ ":""}{ms.l}</div>)}</div>}</div></section>
 
