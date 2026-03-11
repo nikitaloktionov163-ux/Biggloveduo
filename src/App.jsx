@@ -260,6 +260,10 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .scroll-line{position:absolute;bottom:82px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;animation:su 1s var(--e1) 2.2s both;}
 .sline{width:1px;height:36px;background:linear-gradient(180deg,transparent,var(--r));animation:shim 1.8s ease-in-out infinite;}
 @keyframes shim{0%,100%{opacity:.2;transform:scaleY(.5)}50%{opacity:.85;transform:scaleY(1)}}
+.quote-card{max-width:380px;margin:32px auto 0;padding:20px 24px;background:rgba(255,255,255,.025);border:1px solid rgba(193,66,104,.12);border-radius:18px;text-align:center;position:relative;}
+.quote-mark{font-family:var(--d);font-size:48px;line-height:.6;color:rgba(193,66,104,.25);margin-bottom:8px;display:block;}
+.quote-text{font-family:var(--d);font-size:clamp(13px,2vw,16px);font-style:italic;font-weight:400;color:var(--ink2);line-height:1.75;margin-bottom:8px;}
+.quote-author{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:rgba(193,66,104,.5);}
 
 /* section */
 .sec{padding:clamp(64px,9vw,108px) clamp(20px,5vw,56px);}
@@ -380,6 +384,19 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 
 /* empty state */
 .empty{padding:28px 0;text-align:center;font-size:12px;font-weight:300;color:var(--ink3);grid-column:1/-1;line-height:1.7;}
+.surprise-btn{padding:9px 22px;border-radius:999px;background:linear-gradient(135deg,rgba(193,66,104,.15),rgba(184,146,74,.12));border:1px solid rgba(193,66,104,.25);color:var(--ink2);font-family:var(--b);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s var(--e2);}
+.surprise-btn:hover{transform:scale(1.04);border-color:rgba(193,66,104,.4);}
+.mem-overlay{position:fixed;inset:0;z-index:980;background:rgba(7,6,13,.88);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadein .3s ease both;}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.mem-card{background:rgba(20,18,33,.97);border:1px solid rgba(193,66,104,.2);border-radius:24px;padding:32px 28px;max-width:380px;width:100%;text-align:center;position:relative;animation:up .38s var(--e1) both;}
+.mem-em{font-size:52px;display:block;margin-bottom:12px;line-height:1;}
+.mem-tag-chip{display:inline-block;padding:3px 12px;border-radius:999px;background:rgba(193,66,104,.1);border:1px solid rgba(193,66,104,.2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:rgba(193,66,104,.7);margin-bottom:16px;}
+.mem-text{font-family:var(--d);font-size:clamp(15px,3vw,20px);font-style:italic;color:var(--ink);line-height:1.7;margin-bottom:16px;}
+.mem-by{font-size:10px;color:var(--ink3);margin-bottom:4px;}
+.mem-date{font-size:10px;color:var(--ink3);margin-bottom:20px;}
+.mem-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:14px;color:var(--ink3);cursor:pointer;padding:4px 8px;}
+.mem-another{padding:9px 22px;border-radius:999px;background:linear-gradient(135deg,var(--r),var(--r2));color:#fff;font-family:var(--b);font-size:12px;font-weight:600;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(193,66,104,.3);transition:transform .18s var(--e2);}
+.mem-another:hover{transform:scale(1.04);}
 
 /* footer */
 .prof-wrap{max-width:480px;margin-inline:auto;text-align:center;}
@@ -469,6 +486,30 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .swipe-dot.on{background:var(--r);width:14px;border-radius:3px;box-shadow:0 0 6px rgba(193,66,104,.5);}
 .foot{border-top:1px solid rgba(255,255,255,.04);padding:24px clamp(20px,5vw,56px);text-align:center;}
 .foot-t{font-size:10px;font-weight:300;color:rgba(255,255,255,.1);line-height:1.7;}
+.shop-form{max-width:480px;margin-inline:auto;margin-bottom:14px;display:flex;flex-direction:column;gap:7px;}
+.shop-cats{display:flex;gap:6px;justify-content:center;}
+.shop-cat{font-size:20px;padding:6px 8px;border-radius:10px;border:1.5px solid transparent;cursor:pointer;transition:all .18s var(--e2);line-height:1;}
+.shop-cat:hover{transform:scale(1.12);}
+.shop-cat.on{border-color:rgba(193,66,104,.4);background:rgba(193,66,104,.1);}
+.shop-filters{display:flex;gap:6px;justify-content:center;margin-bottom:14px;flex-wrap:wrap;}
+.shop-filter{padding:5px 14px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:var(--ink3);font-family:var(--b);font-size:11px;font-weight:500;cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:4px;}
+.shop-filter.on{background:rgba(193,66,104,.12);border-color:rgba(193,66,104,.3);color:var(--ink);}
+.shop-filter-n{background:rgba(255,255,255,.1);border-radius:999px;padding:1px 6px;font-size:10px;}
+.shop-clear{padding:5px 12px;border-radius:999px;background:none;border:1px solid rgba(255,255,255,.06);color:var(--ink3);font-size:10px;cursor:pointer;transition:all .18s;}
+.shop-clear:hover{border-color:rgba(240,100,100,.3);color:rgba(240,100,100,.6);}
+.shop-list{max-width:480px;margin-inline:auto;display:flex;flex-direction:column;gap:6px;}
+.shop-item{display:flex;align-items:center;gap:8px;padding:11px 12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:13px;transition:all .2s var(--e1);}
+.shop-item.done{opacity:.5;}
+.shop-item-cat{font-size:18px;flex-shrink:0;}
+.shop-chk{width:20px;height:20px;border-radius:6px;border:1.5px solid rgba(255,255,255,.18);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;}
+.shop-chk.ok{background:var(--mint);border-color:var(--mint);}
+.shop-item-body{flex:1;min-width:0;}
+.shop-item-text{font-size:13px;font-weight:500;color:var(--ink);transition:all .2s;}
+.shop-item-text.done{text-decoration:line-through;color:var(--ink3);}
+.shop-item-meta{font-size:9.5px;color:var(--ink3);margin-top:2px;}
+.shop-del{font-size:10px;color:var(--ink3);cursor:pointer;padding:3px 6px;border-radius:5px;transition:color .18s;flex-shrink:0;}
+.shop-del:hover{color:rgba(240,100,100,.7);}
+.empty-hint{text-align:center;font-size:12px;color:var(--ink3);padding:24px 0;}
 `;
 
 /* ─── UTILS ─── */
@@ -488,13 +529,18 @@ function VoicePlayer({data,dur}){const[p,sp]=useState(false);const ar=useRef(nul
 function daysUntil(ds){const now=new Date();now.setHours(0,0,0,0);const d=new Date(ds);const nx=new Date(now.getFullYear(),d.getMonth(),d.getDate());if(nx<now)nx.setFullYear(now.getFullYear()+1);return Math.round((nx-now)/86400000);}
 function useSwipe(onLeft,onRight,threshold=58){const st=useRef(null);const onTouchStart=e=>{st.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};const onTouchEnd=e=>{if(!st.current)return;const dx=e.changedTouches[0].clientX-st.current.x;const dy=e.changedTouches[0].clientY-st.current.y;st.current=null;if(Math.abs(dy)>Math.abs(dx)*1.1||Math.abs(dx)<threshold)return;dx<0?onLeft():onRight();};return{onTouchStart,onTouchEnd};}
 
+const QUOTES=[{text:"Любовь — это не то, что ты находишь. Это то, что находит тебя.",author:"Лоррейн Хэнсберри"},{text:"В твоих руках я нашёл дом, которого так долго искал.",author:""},{text:"Ты — лучшее, что случилось со мной.",author:""},{text:"Каждый день с тобой — это подарок.",author:""},{text:"Я выбираю тебя. И буду выбирать снова и снова.",author:""},{text:"Любовь измеряется не временем, а глубиной.",author:""},{text:"С тобой даже тишина звучит красиво.",author:""},{text:"Ты делаешь мой мир лучше просто своим существованием.",author:""},{text:"Наша история — моя любимая.",author:""},{text:"В мире миллиарды людей, и я рад(а), что встретил(а) именно тебя.",author:""},{text:"Любить — значит видеть человека таким, каким его задумал Бог.",author:"Достоевский"},{text:"Ты мой тихий рай.",author:""},{text:"Когда я с тобой, мне не нужно больше ничего.",author:""},{text:"Расстояние — это просто расстояние. Ты всегда со мной.",author:""},{text:"Я люблю тебя не только за то, кто ты есть, но и за то, кем я становлюсь рядом с тобой.",author:""},{text:"Настоящая любовь — это когда тебе хорошо молчать вместе.",author:""},{text:"Ты — мой любимый человек в любой версии жизни.",author:""},{text:"Мы начинались как мечта и стали реальностью.",author:""},{text:"Если бы пришлось прожить жизнь заново, я бы нашёл(ла) тебя раньше.",author:""},{text:"Любовь — это когда счастье другого важнее твоего собственного.",author:"Хаксли"},{text:"Ты — моё любимое «доброе утро» и самое грустное «спокойной ночи».",author:""},{text:"Вместе мы сильнее любой бури.",author:""},{text:"Твоя улыбка — лучшее, что я вижу каждый день.",author:""},{text:"Я не ищу идеального человека. Я нашёл(ла) тебя.",author:""},{text:"Любовь — это не глагол. Это существительное, которое ты.",author:""},{text:"С тобой даже обычный день становится особенным.",author:""},{text:"Ты — причина, по которой я верю в хорошее.",author:""},{text:"Наша любовь — не идеальная. Но она настоящая.",author:""},{text:"Я готов(а) идти рядом с тобой в любую сторону.",author:""},{text:"Любить тебя — это самое лёгкое и самое важное, что я делаю.",author:""},{text:"Дом — это не место. Это ты.",author:""},{text:"Ты меняешь мой мир одним своим присутствием.",author:""},{text:"Каждый момент с тобой — это то, о чём я буду вспоминать всю жизнь.",author:""},{text:"Нет ничего важнее того, что между нами.",author:""},{text:"Я выбрал(а) бы тебя снова в любой жизни.",author:""},{text:"С тобой я наконец понял(а), что значит быть дома.",author:""},{text:"Ты — моё самое красивое случайное стечение обстоятельств.",author:""},{text:"Любовь — это смотреть не друг на друга, а в одну сторону.",author:"Сент-Экзюпери"},{text:"Быть рядом с тобой — это уже счастье.",author:""},{text:"Ты — лучшая часть каждого моего дня.",author:""}];
+const getTodayQuote=()=>QUOTES[Math.floor(Date.now()/86400000)%QUOTES.length];
+function QuoteCard(){const q=getTodayQuote();return(<div className="quote-card"><div className="quote-mark">"</div><div className="quote-text">{q.text}</div>{q.author&&<div className="quote-author">— {q.author}</div>}</div>);}
+
 /* ─── SECTIONS ─── */
 const CAL_EM=["💍","🌹","🎂","✈️","🏠","💑","🎁","⭐","🥂","🌙","🎭","🌺"];
 function CalSec({pid,me}){const c=coll("cal",pid);const[evs,sE]=useState([]);const[t,sT]=useState("");const[dt,sDt]=useState("");const[ds,sDs]=useState("");const[em,sEm]=useState("💍");useEffect(()=>{c.load().then(sE);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sE),7000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!t.trim()||!dt)return;const ev={id:Date.now(),t:t.trim(),dt,ds:ds.trim(),em,by:me};const u=[...evs,ev].sort((a,b)=>daysUntil(a.dt)-daysUntil(b.dt));sE(u);await c.save(u);sT("");sDt("");sDs("");};const chip=d=>d===0?["today","🎉 Сегодня"]:d<=7?["soon",`через ${d} дн.`]:d<=30?["near",`через ${d} дн.`]:["far",`через ${d} дн.`];return(<div className="sec" id="calendar"><div className="sec-in"><span className="brow">Важные даты</span><h2 className="sh">Наш <em>календарь</em></h2><p className="sp">Годовщины, путешествия, особые события — всё вместе.</p><div className="grid">{evs.length===0&&<div className="empty">Добавьте первую важную дату 💍</div>}{evs.map(ev=><div key={ev.id} className="card"><div className="card-top"><span className="card-em">{ev.em}</span><span className="card-meta" style={{color:"var(--g)"}}>{new Date(ev.dt).toLocaleDateString("ru-RU",{day:"numeric",month:"short"})}</span></div><div className="card-t">{ev.t}</div>{ev.ds&&<div className="card-d">{ev.ds}</div>}{(()=>{const[cls,lbl]=chip(daysUntil(ev.dt));return <span className={`card-chip chip-${cls}`}>{lbl}</span>;})()}</div>)}</div><div className="form"><div className="ep">{CAL_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sEm(e)}>{e}</span>)}</div><div className="row"><input className="fi" placeholder="Название" value={t} onChange={e=>sT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><input className="fi fi-date" type="date" value={dt} onChange={e=>sDt(e.target.value)} style={{width:136,flexShrink:0}}/></div><div className="row"><input className="fi" placeholder="Описание" value={ds} onChange={e=>sDs(e.target.value)}/><button className="fa" disabled={!t.trim()||!dt} onClick={add}>Добавить</button></div></div></div></div>);}
 
 const MOM_EM=["🌹","💕","✨","😍","🥰","💋","🫶","🌙","☕","🎵","🌊","🏔️","💌","🎉","🌸","🤍"];
 const TAGS=[{id:"happy",l:"Счастье"},{id:"tender",l:"Нежность"},{id:"funny",l:"Смешно"},{id:"important",l:"Важно"}];
-function MomSec({pid,me}){const c=coll("mom",pid);const[items,sI]=useState([]);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");useEffect(()=>{c.load().then(sI);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sI),5000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};const u=[m,...items];sI(u);await c.save(u);sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p><div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div></div></div>);}
+function MemoryOverlay({item,onClose,onAnother}){if(!item)return null;const tagLbl=TAGS.find(t=>t.id===item.tag)?.l||"Важно";return(<div className="mem-overlay" onClick={onClose}><div className="mem-card" onClick={e=>e.stopPropagation()}><div className="mem-em">{item.em}</div><div className="mem-tag-chip">{tagLbl}</div><div className="mem-text">{item.txt}</div>{item.by&&<div className="mem-by">@{n(item.by)}</div>}{item.ts&&<div className="mem-date">{new Date(item.ts).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"})}</div>}<button className="mem-close" onClick={onClose}>✕</button><button className="mem-another" onClick={onAnother}>Ещё одно 💫</button></div></div>);}
+function MomSec({pid,me}){const c=coll("mom",pid);const[items,sI]=useState([]);const[surprise,sSurprise]=useState(null);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");useEffect(()=>{c.load().then(sI);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sI),5000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};const u=[m,...items];sI(u);await c.save(u);sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});const showAnother=()=>{if(items.length<2)return;let idx;do{idx=Math.floor(Math.random()*items.length);}while(items[idx].id===surprise?.id);sSurprise(items[idx]);};return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>{items.length>0&&<div style={{textAlign:"center",marginBottom:20}}><button className="surprise-btn" onClick={()=>sSurprise(items[Math.floor(Math.random()*items.length)])}>💫 Удиви меня</button></div>}<div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div>{surprise&&<MemoryOverlay item={surprise} onClose={()=>sSurprise(null)} onAnother={showAnother}/>}</div></div>);}
 
 function DreamsSec({me,partner}){const myC=coll("drm",n(me));const ptC=coll("drm",n(partner));const[my,sMy]=useState([]);const[pt,sPt]=useState([]);const[inp,sI]=useState("");useEffect(()=>{myC.load().then(sMy);ptC.load().then(sPt);},[]);useEffect(()=>{const iv=setInterval(()=>{myC.load().then(sMy);ptC.load().then(sPt);},7000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!inp.trim())return;const u=[...my,{id:Date.now(),t:inp.trim(),done:false}];sMy(u);await myC.save(u);sI("");};const toggle=async id=>{const u=my.map(d=>d.id===id?{...d,done:!d.done}:d);sMy(u);await myC.save(u);};const Col=({title,em,items,isMe})=><div className="dcol"><div className="dcol-h"><span>{em}</span>{title}</div>{items.length===0&&<p className="empty" style={{padding:"8px 0",gridColumn:"auto"}}>{isMe?"Добавь свою первую мечту…":"Мечты пока не добавлены…"}</p>}{items.map(d=><div key={d.id} className="di">{isMe?<div className={`dchk ${d.done?"ok":""}`} onClick={()=>toggle(d.id)}>{d.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>  </svg>}</div>:<span style={{fontSize:12,flexShrink:0,marginTop:1}}>{d.done?"✅":"✨"}</span>}<span className={`di-txt ${d.done?"di-done":""}`}>{d.t}</span></div>)}{isMe&&<div className="dadd"><input className="fi" placeholder="Добавить мечту…" value={inp} onChange={e=>sI(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!inp.trim()} onClick={add} style={{padding:"9px 13px"}}>+</button></div>}</div>;return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div className="dcols"><Col title={`@${n(me)}`} em="🌟" items={my} isMe={true}/><Col title={`@${n(partner)}`} em="💫" items={pt} isMe={false}/></div></div></div>);}
 
@@ -903,6 +949,63 @@ function PlannerSec({pid,me,partner}){
     </div>
   );
 }
+const SHOP_CATS=[{id:'food',icon:'🥦',label:'Еда'},{id:'drinks',icon:'🧃',label:'Напитки'},{id:'home',icon:'🏠',label:'Дом'},{id:'care',icon:'🧴',label:'Уход'},{id:'other',icon:'📦',label:'Другое'}];
+function ShopSec({pid,me,partner}){
+  const c=coll("shop",pid);
+  const[items,sI]=useState([]);
+  const[inp,sInp]=useState('');
+  const[cat,sCat]=useState('food');
+  const[filter,sFilter]=useState('all');
+  useEffect(()=>{c.load().then(d=>sI(Array.isArray(d)?d:[]));},[]);
+  useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>sI(Array.isArray(d)?d:[])),5000);return()=>clearInterval(iv);},[]);
+  const add=async()=>{if(!inp.trim())return;const updated=[...items,{id:Date.now(),text:inp.trim(),done:false,by:me,cat,ts:Date.now()}];sI(updated);await c.save(updated);sInp('');};
+  const toggle=async(id)=>{const updated=items.map(x=>x.id===id?{...x,done:!x.done,doneBy:!x.done?me:null}:x);sI(updated);await c.save(updated);};
+  const remove=async(id)=>{const updated=items.filter(x=>x.id!==id);sI(updated);await c.save(updated);};
+  const clearDone=async()=>{const updated=items.filter(x=>!x.done);sI(updated);await c.save(updated);};
+  const filtered=items.filter(x=>filter==='all'?true:filter==='active'?!x.done:x.done);
+  const doneCount=items.filter(x=>x.done).length;
+  const activeCount=items.filter(x=>!x.done).length;
+  return(
+    <div className="sec" id="shop">
+      <div className="sec-in">
+        <span className="brow">Список покупок</span>
+        <h2 className="sh">Купить <em>вместе</em></h2>
+        <p className="sp">Добавляйте что нужно купить — оба видите список в реальном времени.</p>
+        <div className="shop-form">
+          <div className="shop-cats">{SHOP_CATS.map(sc=><div key={sc.id} className={`shop-cat ${cat===sc.id?'on':''}`} onClick={()=>sCat(sc.id)} title={sc.label}>{sc.icon}</div>)}</div>
+          <div className="row">
+            <input className="fi" placeholder="Добавить товар…" value={inp} onChange={e=>sInp(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()}/>
+            <button className="fa" disabled={!inp.trim()} onClick={add}>+</button>
+          </div>
+        </div>
+        {items.length>0&&(
+          <div className="shop-filters">
+            {[['all','Все',items.length],['active','Нужно',activeCount],['done','Куплено',doneCount]].map(([id,label,count])=><button key={id} className={`shop-filter ${filter===id?'on':''}`} onClick={()=>sFilter(id)}>{label} {count>0&&<span className="shop-filter-n">{count}</span>}</button>)}
+            {doneCount>0&&<button className="shop-clear" onClick={clearDone}>Очистить куплено</button>}
+          </div>
+        )}
+        <div className="shop-list">
+          {filtered.length===0&&<div className="empty-hint">{filter==='done'?'Ничего не куплено':'Список пуст — добавьте первый товар 🛒'}</div>}
+          {filtered.map(item=>{
+            const catObj=SHOP_CATS.find(sc=>sc.id===item.cat)||SHOP_CATS[4];
+            const isMine=n(item.by)===n(me);
+            return(
+              <div key={item.id} className={`shop-item ${item.done?'done':''}`}>
+                <div className="shop-item-cat">{catObj.icon}</div>
+                <div className={`shop-chk ${item.done?'ok':''}`} onClick={()=>toggle(item.id)}>{item.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/></svg>}</div>
+                <div className="shop-item-body">
+                  <div className={`shop-item-text ${item.done?'done':''}`}>{item.text}</div>
+                  <div className="shop-item-meta"><span>@{n(item.by)}</span>{item.done&&item.doneBy&&<span style={{color:'var(--mint)'}}> · куплено @{n(item.doneBy)}</span>}</div>
+                </div>
+                {isMine&&!item.done&&<div className="shop-del" onClick={()=>remove(item.id)}>✕</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 function KissBox({start}){const[e,se]=useState(0);useEffect(()=>{if(!start)return;const iv=setInterval(()=>se(Math.floor((Date.now()-start)/1000)),100);return()=>clearInterval(iv);},[start]);const f=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;return <div className="kiss-box"><span className="kiss-em">💋</span><div className="kiss-t">{f(e)}</div><div className="kiss-l">Держите…</div></div>;}
 
 /* ─── VIBE RIPPLE ─── */
@@ -912,7 +1015,7 @@ function VibeRipple({vid,partner,onDone}){const p=VIBES.find(x=>x.id===vid)||VIB
 function useTG(){const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;const ok=!!(tg?.initData);useEffect(()=>{if(!tg||!ok)return;tg.ready();tg.expand();tg.setHeaderColor("#07060d");tg.setBackgroundColor("#07060d");},[]);const u=tg?.initDataUnsafe?.user;const share=me=>{const bot=import.meta.env.VITE_BOT_USERNAME||"duo_viewer_bot";const url=`https://t.me/${bot}?startapp=${encodeURIComponent(me)}`;const txt="Открой наше приложение 💕";if(tg&&ok)tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(txt)}`);else navigator.clipboard?.writeText(url);};return{ok,username:u?.username||"",startParam:tg?.initDataUnsafe?.start_param||"",photoUrl:u?.photo_url||null,share};}
 
 /* ─── LANDING ─── */
-const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"}];
+const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"}];
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[stuck,sS]=useState(false);const[active,sA]=useState("hero");
@@ -952,7 +1055,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   useEffect(()=>{if(chat)sUnread(0);},[chat]);
 
   const scrollTo=id=>sRefs.current[id]?.scrollIntoView({behavior:"smooth"});
-  const SWIPE_ORDER=["hero","profile","mood","qa","timer","planner","calendar","moments","dreams","wishes","travel","map","promises"];
+  const SWIPE_ORDER=["hero","profile","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
@@ -988,6 +1091,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
         <p className="hero-sub">Ваш личный мир — даты, воспоминания, мечты и желания.</p>
         {daysT!==null&&<div className="hero-stats"><div><div className="hs-n">{daysT}</div><div className="hs-l">дней вместе</div></div><div><div className="hs-n">{Math.floor(daysT/7)}</div><div className="hs-l">недель</div></div><div><div className="hs-n">{Math.floor(daysT/30)}</div><div className="hs-l">месяцев</div></div></div>}
         <div className="hero-cta"><button className="cta-p" onClick={()=>scrollTo("moments")}>Наши моменты 🌹</button><button className="cta-s" onClick={()=>scrollTo("calendar")}>Календарь 📅</button></div>
+        <QuoteCard />
         <div className="scroll-line"><div className="sline"/></div>
       </section>
 
@@ -1002,6 +1106,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
 
       <div className="hr"/>
       <section id="planner" ref={el=>sRefs.current.planner=el}><PlannerSec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
+      <section id="shop" ref={el=>sRefs.current.shop=el}><ShopSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
       <section ref={el=>sRefs.current.calendar=el}><CalSec pid={pid} me={me}/></section>
       <div className="hr"/>
@@ -1033,7 +1139,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}</div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots">{["hero","profile","mood","qa","timer","planner","calendar","moments","dreams","wishes","travel","map","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots">{["hero","profile","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
