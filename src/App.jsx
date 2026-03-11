@@ -46,6 +46,13 @@ async function loadCalendar(pair)    { return (await s_get(`duo_calendar:${pair}
 
 const pairKey = (a, b) => [normalize(a), normalize(b)].sort().join("_");
 
+async function saveWishes(pair, arr)   { await s_set(`duo_wishes:${pair}`, arr); }
+async function loadWishes(pair)        { return (await s_get(`duo_wishes:${pair}`)) || []; }
+async function saveDreams(user, arr)   { await s_set(`duo_dreams:${normalize(user)}`, arr); }
+async function loadDreams(user)        { return (await s_get(`duo_dreams:${normalize(user)}`)) || []; }
+async function saveTravel(pair, arr)   { await s_set(`duo_travel:${pair}`, arr); }
+async function loadTravel(pair)        { return (await s_get(`duo_travel:${pair}`)) || []; }
+
 /* ══════════════════════════════════════════════════════
    AMBIENT AUDIO
 ══════════════════════════════════════════════════════ */
@@ -380,6 +387,64 @@ html,body,#root{height:100%;background:var(--bg);color:var(--fg);font-family:var
 /* ── FOOTER ── */
 .lfoot{border-top:1px solid rgba(255,255,255,.06);padding:30px clamp(20px,5vw,60px);text-align:center;}
 .foot-copy{font-size:11px;color:rgba(255,255,255,.15);line-height:1.7;}
+
+/* ── WISHES ── */
+.wishes-tabs{display:inline-flex;background:rgba(255,255,255,.05);border:1px solid rgba(232,82,122,.12);border-radius:14px;padding:3px;gap:2px;margin-bottom:28px;}
+.wish-tab{padding:7px 18px;border-radius:11px;font-size:12px;font-weight:600;color:var(--fg3);cursor:pointer;transition:all .22s;}
+.wish-tab.active{background:rgba(232,82,122,.22);color:var(--rose-hi);border:1px solid rgba(232,82,122,.3);}
+.wishes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:20px;text-align:left;}
+.wish-card{border-radius:16px;padding:14px 16px;animation:su .3s var(--ease) both;transition:transform .2s var(--spring),border-color .2s;}
+.wish-card:hover{transform:scale(1.02);}
+.wish-card.mine{background:rgba(232,82,122,.07);border:1px solid rgba(232,82,122,.18);}
+.wish-card.theirs{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);}
+.wish-card.done{opacity:.5;filter:grayscale(.4);}
+.wish-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
+.wish-emoji{font-size:20px;}
+.wish-by{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:rgba(232,82,122,.6);}
+.wish-title{font-size:14px;font-weight:600;color:var(--fg);line-height:1.35;}
+.wish-desc{font-size:11px;color:var(--fg3);margin-top:4px;line-height:1.5;}
+.wish-fulfill{margin-top:10px;padding:5px 12px;border-radius:8px;background:linear-gradient(135deg,var(--rose),var(--rose-lo));color:#fff;font-size:11px;font-weight:600;border:none;cursor:pointer;transition:opacity .18s;}
+.wish-fulfill:hover{opacity:.85;}
+.wish-done-badge{margin-top:10px;font-size:10px;color:var(--green);font-weight:600;}
+
+/* ── DREAMS ── */
+.dreams-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:28px;text-align:left;}
+@media(max-width:600px){.dreams-cols{grid-template-columns:1fr;}}
+.dreams-col{background:rgba(255,255,255,.02);border:1px solid rgba(232,82,122,.10);border-radius:20px;padding:20px;}
+.dreams-col-title{font-family:var(--font-r);font-size:16px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.dreams-col-title span{font-size:18px;}
+.dream-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.dream-item:last-child{border-bottom:none;}
+.dream-star{font-size:14px;flex-shrink:0;margin-top:1px;}
+.dream-text{font-size:13px;color:var(--fg2);line-height:1.55;flex:1;}
+.dream-add{display:flex;gap:6px;margin-top:14px;}
+.dream-input{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(232,82,122,.14);border-radius:10px;padding:9px 11px;color:var(--fg);font-family:var(--font-b);font-size:12px;outline:none;}
+.dream-input:focus{border-color:rgba(232,82,122,.45);}
+.dream-input::placeholder{color:var(--fg3);}
+
+/* ── TRAVEL ── */
+.travel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:28px;text-align:left;}
+.travel-card{border-radius:18px;padding:16px 18px;animation:su .3s var(--ease) both;position:relative;overflow:hidden;transition:transform .2s var(--spring);}
+.travel-card:hover{transform:scale(1.02);}
+.travel-card.dream{background:rgba(100,210,255,.06);border:1px solid rgba(100,210,255,.15);}
+.travel-card.planning{background:rgba(212,168,83,.07);border:1px solid rgba(212,168,83,.20);}
+.travel-card.done{background:rgba(48,209,88,.06);border:1px solid rgba(48,209,88,.18);}
+.travel-status{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:3px 9px;border-radius:999px;margin-bottom:9px;}
+.travel-status.dream{background:rgba(100,210,255,.12);color:var(--teal);}
+.travel-status.planning{background:rgba(212,168,83,.15);color:var(--gold);}
+.travel-status.done{background:rgba(48,209,88,.12);color:var(--green);}
+.travel-flag{font-size:28px;display:block;margin-bottom:6px;}
+.travel-place{font-size:15px;font-weight:700;color:var(--fg);line-height:1.3;}
+.travel-note{font-size:11px;color:var(--fg3);margin-top:4px;line-height:1.5;}
+.travel-who{font-size:9px;color:rgba(232,82,122,.5);font-weight:600;margin-top:8px;text-transform:uppercase;letter-spacing:.05em;}
+.travel-add{display:flex;flex-direction:column;gap:8px;margin-top:20px;max-width:500px;margin-inline:auto;}
+.travel-status-picker{display:flex;gap:6px;justify-content:center;}
+.travel-status-opt{padding:6px 14px;border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .2s;}
+.travel-status-opt.dream{background:rgba(100,210,255,.08);color:var(--teal);border-color:rgba(100,210,255,.15);}
+.travel-status-opt.planning{background:rgba(212,168,83,.08);color:var(--gold);border-color:rgba(212,168,83,.15);}
+.travel-status-opt.done{background:rgba(48,209,88,.08);color:var(--green);border-color:rgba(48,209,88,.15);}
+.travel-status-opt.selected{transform:scale(1.06);box-shadow:0 0 14px rgba(255,255,255,.1);}
+
 `;
 
 /* ══════════════════════════════════════════════════════
@@ -641,6 +706,241 @@ function MomentsSection({ pair, me, partner }) {
 }
 
 /* ══════════════════════════════════════════════════════
+   DREAMS SECTION
+══════════════════════════════════════════════════════ */
+function DreamsSection({ me, partner }) {
+  const [myDreams, setMyDreams]         = useState([]);
+  const [partnerDreams, setPartnerDreams] = useState([]);
+  const [input, setInput] = useState("");
+
+  useEffect(() => {
+    loadDreams(me).then(setMyDreams);
+    loadDreams(partner).then(setPartnerDreams);
+  }, [me, partner]);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      loadDreams(me).then(setMyDreams);
+      loadDreams(partner).then(setPartnerDreams);
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [me, partner]);
+
+  const add = async () => {
+    if (!input.trim()) return;
+    const updated = [...myDreams, { id: Date.now(), text: input.trim() }];
+    setMyDreams(updated);
+    await saveDreams(me, updated);
+    setInput("");
+  };
+
+  const DreamCol = ({ title, emoji, dreams, isMe }) => (
+    <div className="dreams-col">
+      <div className="dreams-col-title"><span>{emoji}</span>{title}</div>
+      {dreams.length === 0 && <p style={{fontSize:12,color:"var(--fg3)",lineHeight:1.7}}>Мечты пока не добавлены…</p>}
+      {dreams.map(d => (
+        <div key={d.id} className="dream-item">
+          <span className="dream-star">✨</span>
+          <span className="dream-text">{d.text}</span>
+        </div>
+      ))}
+      {isMe && (
+        <div className="dream-add">
+          <input className="dream-input" placeholder="Добавить мечту…" value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && add()}/>
+          <button className="cal-submit" disabled={!input.trim()} onClick={add}>+</button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="s-section" id="dreams">
+      <div className="s-center">
+        <span className="s-eyebrow">Мечты</span>
+        <h2 className="s-h2">То, о чём <em>мы мечтаем</em></h2>
+        <p className="s-sub">Каждый пишет своё — и оба видят мечты друг друга.</p>
+        <div className="dreams-cols">
+          <DreamCol title={`@${normalize(me)}`} emoji="🌟" dreams={myDreams} isMe={true}/>
+          <DreamCol title={`@${normalize(partner)}`} emoji="💫" dreams={partnerDreams} isMe={false}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   WISHES SECTION
+══════════════════════════════════════════════════════ */
+const WISH_EMOJIS = ["🎁","💍","👗","📚","🎵","🍕","💄","🏋️","📷","🎮","🌸","💅","🎭","🍷","✈️","🛍️"];
+
+function WishesSection({ pair, me, partner }) {
+  const [wishes, setWishes]   = useState([]);
+  const [tab, setTab]         = useState("all");
+  const [title, setTitle]     = useState("");
+  const [desc, setDesc]       = useState("");
+  const [emoji, setEmoji]     = useState("🎁");
+
+  useEffect(() => { loadWishes(pair).then(setWishes); }, [pair]);
+  useEffect(() => {
+    const iv = setInterval(() => loadWishes(pair).then(setWishes), 5000);
+    return () => clearInterval(iv);
+  }, [pair]);
+
+  const add = async () => {
+    if (!title.trim()) return;
+    const w = { id: Date.now(), title: title.trim(), desc: desc.trim(), emoji, addedBy: me, done: false, doneBy: null };
+    const updated = [w, ...wishes];
+    setWishes(updated);
+    await saveWishes(pair, updated);
+    setTitle(""); setDesc("");
+  };
+
+  const fulfill = async (id) => {
+    const updated = wishes.map(w => w.id === id ? { ...w, done: true, doneBy: me } : w);
+    setWishes(updated);
+    await saveWishes(pair, updated);
+  };
+
+  const filtered = tab === "all" ? wishes
+    : tab === "mine" ? wishes.filter(w => normalize(w.addedBy) === normalize(me))
+    : wishes.filter(w => normalize(w.addedBy) === normalize(partner));
+
+  return (
+    <div className="s-section" id="wishes" style={{background:"rgba(255,255,255,.012)"}}>
+      <div className="s-center">
+        <span className="s-eyebrow">Список желаний</span>
+        <h2 className="s-h2">Что мы <em>хотим</em></h2>
+        <p className="s-sub">Желания каждого — и возможность исполнить желание любимого человека.</p>
+
+        <div className="wishes-tabs">
+          {[["all","Все"],["mine","Мои"],["theirs","Партнёра"]].map(([v,l])=>(
+            <div key={v} className={`wish-tab ${tab===v?"active":""}`} onClick={()=>setTab(v)}>{l}</div>
+          ))}
+        </div>
+
+        <div className="wishes-grid">
+          {filtered.length === 0 && (
+            <div style={{gridColumn:"1/-1",textAlign:"center",padding:"28px",color:"var(--fg3)",fontSize:13}}>
+              Пока пусто — добавь первое желание 🎁
+            </div>
+          )}
+          {filtered.map(w => (
+            <div key={w.id} className={`wish-card ${normalize(w.addedBy)===normalize(me)?"mine":"theirs"} ${w.done?"done":""}`}>
+              <div className="wish-card-top">
+                <span className="wish-emoji">{w.emoji}</span>
+                <span className="wish-by">@{normalize(w.addedBy)}</span>
+              </div>
+              <div className="wish-title">{w.title}</div>
+              {w.desc && <div className="wish-desc">{w.desc}</div>}
+              {!w.done && normalize(w.addedBy) !== normalize(me) && (
+                <button className="wish-fulfill" onClick={()=>fulfill(w.id)}>✨ Исполнить</button>
+              )}
+              {w.done && <div className="wish-done-badge">✅ Исполнено — @{normalize(w.doneBy)}</div>}
+            </div>
+          ))}
+        </div>
+
+        <div className="cal-add">
+          <div className="emoji-picker" style={{justifyContent:"center"}}>
+            {WISH_EMOJIS.map(e => <span key={e} className={`emoji-opt ${emoji===e?"selected":""}`} onClick={()=>setEmoji(e)}>{e}</span>)}
+          </div>
+          <div className="cal-row">
+            <input className="cal-input" placeholder="Моё желание…" value={title} onChange={e=>setTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
+            <button className="cal-submit" disabled={!title.trim()} onClick={add}>Добавить</button>
+          </div>
+          <input className="cal-input" placeholder="Описание (необязательно)" value={desc} onChange={e=>setDesc(e.target.value)}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   TRAVEL SECTION
+══════════════════════════════════════════════════════ */
+const TRAVEL_FLAGS = ["🇯🇵","🇮🇹","🇫🇷","🇪🇸","🇬🇷","🇹🇭","🇧🇦","🇵🇹","🇲🇽","🇮🇸","🇳🇴","🇨🇭","🇦🇹","🇨🇿","🌍"];
+const STATUS_LABELS = { dream:"Мечта", planning:"Планируем", done:"Были ✓" };
+
+function TravelSection({ pair, me }) {
+  const [places, setPlaces]   = useState([]);
+  const [place, setPlace]     = useState("");
+  const [note, setNote]       = useState("");
+  const [flag, setFlag]       = useState("🇯🇵");
+  const [status, setStatus]   = useState("dream");
+
+  useEffect(() => { loadTravel(pair).then(setPlaces); }, [pair]);
+  useEffect(() => {
+    const iv = setInterval(() => loadTravel(pair).then(setPlaces), 5000);
+    return () => clearInterval(iv);
+  }, [pair]);
+
+  const add = async () => {
+    if (!place.trim()) return;
+    const p = { id: Date.now(), place: place.trim(), note: note.trim(), flag, status, addedBy: me };
+    const updated = [...places, p];
+    setPlaces(updated);
+    await saveTravel(pair, updated);
+    setPlace(""); setNote("");
+  };
+
+  const cycleStatus = async (id) => {
+    const order = ["dream","planning","done"];
+    const updated = places.map(p => {
+      if (p.id !== id) return p;
+      const next = order[(order.indexOf(p.status)+1) % order.length];
+      return { ...p, status: next };
+    });
+    setPlaces(updated);
+    await saveTravel(pair, updated);
+  };
+
+  return (
+    <div className="s-section" id="travel">
+      <div className="s-center">
+        <span className="s-eyebrow">Путешествия</span>
+        <h2 className="s-h2">Куда мы <em>хотим поехать</em></h2>
+        <p className="s-sub">Мечты, планы и уже пройденные маршруты. Нажми на карточку — обновить статус.</p>
+
+        <div className="travel-grid">
+          {places.length === 0 && (
+            <div style={{gridColumn:"1/-1",textAlign:"center",padding:"32px",color:"var(--fg3)",fontSize:13}}>
+              Добавьте первое место мечты ✈️
+            </div>
+          )}
+          {places.map(p => (
+            <div key={p.id} className={`travel-card ${p.status}`} onClick={()=>cycleStatus(p.id)} style={{cursor:"pointer"}}>
+              <span className={`travel-status ${p.status}`}>{STATUS_LABELS[p.status]}</span>
+              <span className="travel-flag">{p.flag}</span>
+              <div className="travel-place">{p.place}</div>
+              {p.note && <div className="travel-note">{p.note}</div>}
+              <div className="travel-who">@{normalize(p.addedBy)}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="travel-add">
+          <div className="emoji-picker" style={{justifyContent:"center"}}>
+            {TRAVEL_FLAGS.map(f => <span key={f} className={`emoji-opt ${flag===f?"selected":""}`} onClick={()=>setFlag(f)}>{f}</span>)}
+          </div>
+          <div className="travel-status-picker">
+            {Object.entries(STATUS_LABELS).map(([v,l])=>(
+              <div key={v} className={`travel-status-opt ${v} ${status===v?"selected":""}`} onClick={()=>setStatus(v)}>{l}</div>
+            ))}
+          </div>
+          <div className="cal-row">
+            <input className="cal-input" placeholder="Название места" value={place} onChange={e=>setPlace(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
+            <button className="cal-submit" disabled={!place.trim()} onClick={add}>Добавить</button>
+          </div>
+          <input className="cal-input" placeholder="Заметка (необязательно)" value={note} onChange={e=>setNote(e.target.value)}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
    PROMISES SECTION
 ══════════════════════════════════════════════════════ */
 const DEFAULT_PROMISES = [
@@ -698,6 +998,9 @@ const SECTIONS = [
   {id:"timer",    label:"Счётчик"},
   {id:"calendar", label:"Календарь"},
   {id:"moments",  label:"Моменты"},
+  {id:"dreams",   label:"Мечты"},
+  {id:"wishes",   label:"Желания"},
+  {id:"travel",   label:"Путешествия"},
   {id:"promises", label:"Обещания"},
 ];
 const DEFAULT_MSG = "Ты — лучшее, что есть в моей жизни 🌹";
@@ -972,6 +1275,27 @@ function Landing({ me, partner, surpriseMsg, connectedAt, onDisconnect }) {
       {/* ── MOMENTS ── */}
       <section ref={el=>sectionRefs.current.moments=el}>
         <MomentsSection pair={pair} me={me} partner={partner}/>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* ── DREAMS ── */}
+      <section ref={el=>sectionRefs.current.dreams=el}>
+        <DreamsSection me={me} partner={partner}/>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* ── WISHES ── */}
+      <section ref={el=>sectionRefs.current.wishes=el}>
+        <WishesSection pair={pair} me={me} partner={partner}/>
+      </section>
+
+      <div className="section-divider"/>
+
+      {/* ── TRAVEL ── */}
+      <section ref={el=>sectionRefs.current.travel=el}>
+        <TravelSection pair={pair} me={me}/>
       </section>
 
       <div className="section-divider"/>
