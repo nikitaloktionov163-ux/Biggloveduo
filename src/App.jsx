@@ -419,8 +419,96 @@ const FLAGS=["🇯🇵","🇮🇹","🇫🇷","🇪🇸","🇬🇷","🇹🇭","
 const SLBL={dream:"Мечта",planning:"Планируем",been:"Были ✓"};
 function TravelSec({pid,me}){const c=coll("trv",pid);const[items,sI]=useState([]);const[pl,sP]=useState("");const[nt,sN]=useState("");const[fl,sF]=useState("🇯🇵");const[st,sSt]=useState("dream");useEffect(()=>{c.load().then(sI);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sI),7000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!pl.trim())return;const p={id:Date.now(),pl:pl.trim(),nt:nt.trim(),fl,st,by:me};const u=[...items,p];sI(u);await c.save(u);sP("");sN("");};const cycle=async id=>{const order=["dream","planning","been"];const u=items.map(p=>p.id!==id?p:{...p,st:order[(order.indexOf(p.st)+1)%order.length]});sI(u);await c.save(u);};const counts={dream:items.filter(x=>x.st==="dream").length,planning:items.filter(x=>x.st==="planning").length,been:items.filter(x=>x.st==="been").length};return(<div className="sec" id="travel"><div className="sec-in"><span className="brow">Путешествия</span><h2 className="sh">Куда мы <em>хотим поехать</em></h2><p className="sp">Нажми на карточку — изменить статус. Мечта → Планируем → Были ✓</p>{items.length>0&&<div className="tcounts">{[["dream","Мечты"],["planning","Планируем"],["been","Были"]].map(([k,l])=><div key={k} className="tcount"><div className={`tc-n ${k}`}>{counts[k]}</div><div className="tc-l">{l}</div></div>)}</div>}<div className="grid">{items.length===0&&<div className="empty">Добавьте первое место мечты ✈️</div>}{items.map(p=><div key={p.id} className="card" style={{cursor:"pointer"}} onClick={()=>cycle(p.id)}><span className={`card-chip chip-${p.st}`} style={{display:"inline-block",marginBottom:8}}>{SLBL[p.st]}</span><div style={{fontSize:24,display:"block",marginBottom:5}}>{p.fl}</div><div className="card-t">{p.pl}</div>{p.nt&&<div className="card-d">{p.nt}</div>}<div style={{fontSize:9,color:"rgba(193,66,104,.4)",marginTop:7,fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>{n(p.by)}</div><div className="travel-hint">Нажми — сменить статус</div></div>)}</div><div className="form"><div className="ep">{FLAGS.map(f=><span key={f} className={`eo ${fl===f?"s":""}`} onClick={()=>sF(f)}>{f}</span>)}</div><div className="cp">{Object.entries(SLBL).map(([v,l])=><div key={v} className={`copt chip-${v} ${st===v?"s":""}`} onClick={()=>sSt(v)}>{l}</div>)}</div><div className="row"><input className="fi" placeholder="Название места" value={pl} onChange={e=>sP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!pl.trim()} onClick={add}>Добавить</button></div><input className="fi" placeholder="Заметка" value={nt} onChange={e=>sN(e.target.value)}/></div></div></div>);}
 
-const DEF_P=[{id:1,em:"🌅",t:"Встречать каждый день вместе, даже на расстоянии"},{id:2,em:"💬",t:"Говорить честно, даже когда это трудно"},{id:3,em:"🌱",t:"Расти вместе и поддерживать мечты друг друга"},{id:4,em:"💋",t:"Никогда не забывать, почему мы начали"},{id:5,em:"🤝",t:"Быть командой — всегда"}];
-function PromisesSec({me}){const[items,sI]=useState(DEF_P);const[inp,sIn]=useState("");const toggle=id=>sI(p=>p.map(x=>x.id===id?{...x,done:!x.done}:x));const add=()=>{if(!inp.trim())return;sI(p=>[...p,{id:Date.now(),em:"💌",t:inp.trim(),by:me,done:false}]);sIn("");};return(<div className="sec" id="promises" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Обещания</span><h2 className="sh">Слова, <em>которые важны</em></h2><p className="sp">То, что вы обещаете друг другу. Отмечай выполненные.</p><div className="plist">{items.map(p=><div key={p.id} className="pi"><span className="pi-em">{p.em}</span><div className="pi-body"><div className={`pi-t ${p.done?"done":""}`}>{p.t}</div>{p.by&&<div className="pi-who">@{n(p.by)}</div>}</div><div className={`pi-chk ${p.done?"ok":""}`} onClick={()=>toggle(p.id)}>{p.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/></svg>}</div></div>)}</div><div className="padd"><input className="fi" placeholder="Добавить обещание…" value={inp} onChange={e=>sIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!inp.trim()} onClick={add}>Добавить</button></div></div></div>);}
+const DEF_P=[{id:1,em:"🌅",t:"Встречать каждый день вместе, даже на расстоянии",done:false,by:null},{id:2,em:"💬",t:"Говорить честно, даже когда это трудно",done:false,by:null},{id:3,em:"🌱",t:"Расти вместе и поддерживать мечты друг друга",done:false,by:null},{id:4,em:"💋",t:"Никогда не забывать, почему мы начали",done:false,by:null},{id:5,em:"🤝",t:"Быть командой — всегда",done:false,by:null}];
+const PROM_EM=["💌","🌹","⭐","🕊️","🌙","💫","🔥","🤍","🌸","✨"];
+function PromisesSec({pid,me}){
+  const c=coll("prom",pid);
+  const[items,sI]=useState(DEF_P);
+  const[inp,sIn]=useState("");
+  const[selEm,sSelEm]=useState("💌");
+  const[loading,sLoad]=useState(true);
+  const saved=useRef(false);
+
+  useEffect(()=>{
+    c.load().then(data=>{
+      if(data&&data.length>0){sI(data);saved.current=true;}
+      else{/* first load — keep defaults, will save on first interaction */}
+      sLoad(false);
+    });
+  },[]);
+
+  useEffect(()=>{
+    const iv=setInterval(()=>c.load().then(data=>{if(data&&data.length>0)sI(data);}),5000);
+    return()=>clearInterval(iv);
+  },[]);
+
+  const save=async(updated)=>{sI(updated);await c.save(updated);};
+
+  const toggle=async(id)=>{
+    const updated=items.map(x=>x.id===id?{...x,done:!x.done,doneBy:!x.done?me:null}:x);
+    await save(updated);
+  };
+
+  const add=async()=>{
+    if(!inp.trim())return;
+    const updated=[...items,{id:Date.now(),em:selEm,t:inp.trim(),by:me,done:false,doneBy:null}];
+    await save(updated);
+    sIn("");
+  };
+
+  const remove=async(id)=>{
+    const updated=items.filter(x=>x.id!==id);
+    await save(updated);
+  };
+
+  if(loading)return(<div className="sec" id="promises"><div className="sec-in"><p style={{color:"var(--ink3)",fontSize:12,textAlign:"center"}}>Загрузка…</p></div></div>);
+
+  const done=items.filter(x=>x.done).length;
+
+  return(
+    <div className="sec" id="promises" style={{background:"rgba(255,255,255,.01)"}}>
+      <div className="sec-in">
+        <span className="brow">Обещания</span>
+        <h2 className="sh">Слова, <em>которые важны</em></h2>
+        <p className="sp">То, что вы обещаете друг другу. Синхронизировано для вас обоих.</p>
+        {items.length>0&&<div style={{display:"flex",gap:18,justifyContent:"center",marginBottom:24,flexWrap:"wrap"}}>
+          <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"rgba(193,66,104,.85)"}}>{items.length}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>обещаний</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"var(--mint)"}}>{done}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>выполнено</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"rgba(184,146,74,.8)"}}>{items.length-done}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>впереди</div></div>
+        </div>}
+        <div className="plist">
+          {items.map(p=>(
+            <div key={p.id} className="pi" style={p.done?{opacity:.55}:{}}>
+              <span className="pi-em">{p.em}</span>
+              <div className="pi-body">
+                <div className={`pi-t ${p.done?"done":""}`}>{p.t}</div>
+                <div style={{display:"flex",gap:10,marginTop:3,alignItems:"center"}}>
+                  {p.by&&<div className="pi-who">@{n(p.by)}</div>}
+                  {p.done&&p.doneBy&&<div style={{fontSize:9,color:"var(--mint)",fontWeight:600}}>✓ @{n(p.doneBy)}</div>}
+                </div>
+              </div>
+              <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                <div className={`pi-chk ${p.done?"ok":""}`} onClick={()=>toggle(p.id)}>
+                  {p.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/></svg>}
+                </div>
+                {p.by&&n(p.by)===n(me)&&<div onClick={()=>remove(p.id)} style={{fontSize:10,color:"var(--ink3)",cursor:"pointer",padding:"2px 4px",borderRadius:4,transition:"color .18s"}}
+                  onMouseEnter={e=>e.target.style.color="rgba(240,100,100,.7)"}
+                  onMouseLeave={e=>e.target.style.color="var(--ink3)"}>✕</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="form" style={{marginTop:12}}>
+          <div className="ep">{PROM_EM.map(e=><span key={e} className={`eo ${selEm===e?"s":""}`} onClick={()=>sSelEm(e)}>{e}</span>)}</div>
+          <div className="row">
+            <input className="fi" placeholder="Добавить обещание…" value={inp} onChange={e=>sIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
+            <button className="fa" disabled={!inp.trim()} onClick={add}>Добавить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ─── KISS COUNTER ─── */
 function KissBox({start}){const[e,se]=useState(0);useEffect(()=>{if(!start)return;const iv=setInterval(()=>se(Math.floor((Date.now()-start)/1000)),100);return()=>clearInterval(iv);},[start]);const f=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;return <div className="kiss-box"><span className="kiss-em">💋</span><div className="kiss-t">{f(e)}</div><div className="kiss-l">Держите…</div></div>;}
@@ -517,7 +605,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,onDisc}){
       <div className="hr"/>
       <section ref={el=>sRefs.current.travel=el}><TravelSec pid={pid} me={me}/></section>
       <div className="hr"/>
-      <section ref={el=>sRefs.current.promises=el}><PromisesSec me={me}/></section>
+      <section ref={el=>sRefs.current.promises=el}><PromisesSec pid={pid} me={me}/></section>
 
       <footer className="foot"><p className="foot-t">@{n(me)} & @{n(partner)} · только вы двое 💕</p></footer>
 
