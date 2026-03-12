@@ -591,32 +591,55 @@ function LoveTimer({start}){const[d,sd]=useState({});useEffect(()=>{const calc=(
 const b64Blob=(b64,t)=>{const bin=atob(b64);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:t});};
 function VoicePlayer({data,dur}){const[p,sp]=useState(false);const ar=useRef(null);useEffect(()=>{if(!data)return;const url=URL.createObjectURL(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))]));const a=new Audio(url);a.onended=()=>sp(false);ar.current=a;return()=>{a.pause();URL.revokeObjectURL(url);};},[data]);const toggle=()=>{const a=ar.current;if(!a)return;if(p){a.pause();a.currentTime=0;sp(false);}else{a.play();sp(true);}};const bars=Array.from({length:14},()=>Math.max(4,Math.sin(Math.random()*3)*9+Math.random()*5+4));return <div className="vp"><button className="vp-btn" onClick={toggle}>{p?<svg width="8" height="8"><rect x="1" y="1" width="2.5" height="6" rx="1" fill="white"/><rect x="4.5" y="1" width="2.5" height="6" rx="1" fill="white"/></svg>:<svg width="8" height="8"><path d="M1.5 1l5.5 3-5.5 3V1z" fill="white"/></svg>}</button><div className="vp-bars">{bars.map((h,i)=><div key={i} className="vp-bar" style={{height:p?`${h}px`:"3px"}}/>)}</div><span className="vp-dur">0:{String(Math.round(dur||0)).padStart(2,"0")}</span></div>;}
 function daysUntil(ds){const now=new Date();now.setHours(0,0,0,0);const d=new Date(ds);const nx=new Date(now.getFullYear(),d.getMonth(),d.getDate());if(nx<now)nx.setFullYear(now.getFullYear()+1);return Math.round((nx-now)/86400000);}
-function useSwipe(onLeft,onRight,threshold=72,targetRef){
+function useSwipe(onLeft,onRight,threshold=72,targetRef=null){
   const st=useRef(null);
-  const onTouchStart=e=>{st.current={x:e.touches[0].clientX,y:e.touches[0].clientY,locked:null};};
-  const onTouchMove=e=>{
-    if(!st.current)return;
-    const dx=Math.abs(e.touches[0].clientX-st.current.x);
-    const dy=Math.abs(e.touches[0].clientY-st.current.y);
-    if(st.current.locked===null&&(dx>8||dy>8))st.current.locked=dx>dy?"h":"v";
-    if(st.current.locked==="h")e.preventDefault();
-  };
-  const onTouchEnd=e=>{
-    if(!st.current)return;
-    const dx=e.changedTouches[0].clientX-st.current.x;
-    const dy=e.changedTouches[0].clientY-st.current.y;
-    const locked=st.current.locked;
-    st.current=null;
-    if(locked!=="h"||Math.abs(dx)<threshold)return;
-    dx<0?onLeft():onRight();
-  };
+  const handlers=useRef({onLeft,onRight});
+  handlers.current={onLeft,onRight};
+
   useEffect(()=>{
-    const el=targetRef?.current;
+    const el=targetRef?.current||document.body;
     if(!el)return;
-    el.addEventListener("touchmove",onTouchMove,{passive:false});
-    return()=>el.removeEventListener("touchmove",onTouchMove);
+
+    const onStart=e=>{
+      const t=e.touches[0];
+      st.current={x:t.clientX,y:t.clientY,locked:null};
+    };
+
+    const onMove=e=>{
+      if(!st.current)return;
+      const dx=Math.abs(e.touches[0].clientX-st.current.x);
+      const dy=Math.abs(e.touches[0].clientY-st.current.y);
+      if(st.current.locked===null&&(dx>8||dy>8)){
+        st.current.locked=dx>dy?"h":"v";
+      }
+      if(st.current.locked==="h"){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const onEnd=e=>{
+      if(!st.current)return;
+      const dx=e.changedTouches[0].clientX-st.current.x;
+      const locked=st.current.locked;
+      st.current=null;
+      if(locked!=="h"||Math.abs(dx)<threshold)return;
+      if(dx<0)handlers.current.onRight();
+      else handlers.current.onLeft();
+    };
+
+    el.addEventListener("touchstart",onStart,{passive:true});
+    el.addEventListener("touchmove",onMove,{passive:false});
+    el.addEventListener("touchend",onEnd,{passive:true});
+
+    return()=>{
+      el.removeEventListener("touchstart",onStart);
+      el.removeEventListener("touchmove",onMove);
+      el.removeEventListener("touchend",onEnd);
+    };
   },[targetRef]);
-  return{onTouchStart,onTouchMove,onTouchEnd};
+
+  return {};
 }
 
 const QUOTES=[{text:"Любовь — это не то, что ты находишь. Это то, что находит тебя.",author:"Лоррейн Хэнсберри"},{text:"В твоих руках я нашёл дом, которого так долго искал.",author:""},{text:"Ты — лучшее, что случилось со мной.",author:""},{text:"Каждый день с тобой — это подарок.",author:""},{text:"Я выбираю тебя. И буду выбирать снова и снова.",author:""},{text:"Любовь измеряется не временем, а глубиной.",author:""},{text:"С тобой даже тишина звучит красиво.",author:""},{text:"Ты делаешь мой мир лучше просто своим существованием.",author:""},{text:"Наша история — моя любимая.",author:""},{text:"В мире миллиарды людей, и я рад(а), что встретил(а) именно тебя.",author:""},{text:"Любить — значит видеть человека таким, каким его задумал Бог.",author:"Достоевский"},{text:"Ты мой тихий рай.",author:""},{text:"Когда я с тобой, мне не нужно больше ничего.",author:""},{text:"Расстояние — это просто расстояние. Ты всегда со мной.",author:""},{text:"Я люблю тебя не только за то, кто ты есть, но и за то, кем я становлюсь рядом с тобой.",author:""},{text:"Настоящая любовь — это когда тебе хорошо молчать вместе.",author:""},{text:"Ты — мой любимый человек в любой версии жизни.",author:""},{text:"Мы начинались как мечта и стали реальностью.",author:""},{text:"Если бы пришлось прожить жизнь заново, я бы нашёл(ла) тебя раньше.",author:""},{text:"Любовь — это когда счастье другого важнее твоего собственного.",author:"Хаксли"},{text:"Ты — моё любимое «доброе утро» и самое грустное «спокойной ночи».",author:""},{text:"Вместе мы сильнее любой бури.",author:""},{text:"Твоя улыбка — лучшее, что я вижу каждый день.",author:""},{text:"Я не ищу идеального человека. Я нашёл(ла) тебя.",author:""},{text:"Любовь — это не глагол. Это существительное, которое ты.",author:""},{text:"С тобой даже обычный день становится особенным.",author:""},{text:"Ты — причина, по которой я верю в хорошее.",author:""},{text:"Наша любовь — не идеальная. Но она настоящая.",author:""},{text:"Я готов(а) идти рядом с тобой в любую сторону.",author:""},{text:"Любить тебя — это самое лёгкое и самое важное, что я делаю.",author:""},{text:"Дом — это не место. Это ты.",author:""},{text:"Ты меняешь мой мир одним своим присутствием.",author:""},{text:"Каждый момент с тобой — это то, о чём я буду вспоминать всю жизнь.",author:""},{text:"Нет ничего важнее того, что между нами.",author:""},{text:"Я выбрал(а) бы тебя снова в любой жизни.",author:""},{text:"С тобой я наконец понял(а), что значит быть дома.",author:""},{text:"Ты — моё самое красивое случайное стечение обстоятельств.",author:""},{text:"Любовь — это смотреть не друг на друга, а в одну сторону.",author:"Сент-Экзюпери"},{text:"Быть рядом с тобой — это уже счастье.",author:""},{text:"Ты — лучшая часть каждого моего дня.",author:""}];
@@ -663,6 +686,34 @@ function CalSec({pid,me}){
 
   const del=async(id)=>{
     await refresh((evs||[]).filter(e=>e.id!==id));
+  };
+
+  const addToGoogle=(ev)=>{
+    const start=ev.dt.replace(/-/g,"");
+    const end=ev.dt.replace(/-/g,"");
+    const url=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.t)}&dates=${start}/${end}&details=${encodeURIComponent(ev.ds||"")}`;
+    window.open(url,"_blank");
+  };
+
+  const exportICS=()=>{
+    if(!evs||evs.length===0)return;
+    const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//DuoViewer//RU"];
+    evs.forEach(ev=>{
+      const dt=ev.dt.replace(/-/g,"");
+      lines.push("BEGIN:VEVENT");
+      lines.push(`DTSTART;VALUE=DATE:${dt}`);
+      lines.push(`DTEND;VALUE=DATE:${dt}`);
+      lines.push(`SUMMARY:${ev.em} ${ev.t}`);
+      if(ev.ds)lines.push(`DESCRIPTION:${ev.ds}`);
+      lines.push(`UID:duoviewer-${ev.id}`);
+      lines.push("END:VEVENT");
+    });
+    lines.push("END:VCALENDAR");
+    const blob=new Blob([lines.join("\r\n")],{type:"text/calendar"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download="duo-calendar.ics";a.click();
+    URL.revokeObjectURL(url);
   };
 
   const isToday=(day)=>day===today.getDate()&&viewDate.getMonth()===today.getMonth()&&viewDate.getFullYear()===today.getFullYear();
@@ -736,11 +787,23 @@ function CalSec({pid,me}){
                   <span style={{fontSize:11,color:dLeft===0?"var(--r)":dLeft<=7?"var(--g)":"var(--ink3)",fontWeight:600,flexShrink:0}}>
                     {dLeft===0?"Сегодня":dLeft===1?"Завтра":`${dLeft} дн.`}
                   </span>
+                  <span onClick={()=>addToGoogle(ev)} style={{color:"#4285f4",cursor:"pointer",fontSize:14,padding:"0 4px"}} title="Добавить в Google Calendar">📅</span>
                   <span onClick={()=>del(ev.id)} style={{color:"var(--ink3)",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</span>
                 </div>
               );
             })}
           </div>
+        )}
+
+        {evs&&evs.length>0&&(
+          <button onClick={exportICS} style={{
+            width:"100%",marginBottom:12,padding:"10px",
+            background:"rgba(66,133,244,.1)",border:"1px solid rgba(66,133,244,.25)",
+            borderRadius:10,color:"#4285f4",fontSize:13,fontWeight:500,cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:8
+          }}>
+            <span>📅</span> Экспорт в Google Calendar (.ics)
+          </button>
         )}
 
         {!showForm?(
@@ -1398,7 +1461,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const milestones=[{n:7,l:"7 дней"},{n:30,l:"1 месяц"},{n:100,l:"100 дней"},{n:180,l:"полгода"},{n:365,l:"1 год"},{n:730,l:"2 года"},{n:1000,l:"1000 дней"},{n:1825,l:"5 лет"}];
 
   return(
-    <div ref={scroll} className="app" {...swipe}>
+    <div ref={scroll} className="app">
       {!online&&<div className="offline-bar">⚠️ Нет соединения — данные могут не синхронизироваться</div>}
       <Timer t0={connectedAt}/>
       <nav className={`nav ${stuck?"stuck":""}`}>
