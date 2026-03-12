@@ -23,7 +23,7 @@ const db = {
 const coll = (ns, id) => ({ save: v=>db.set(`${ns}:${id}`,v), load: ()=>db.get(`${ns}:${id}`).then(r=>r||[]) });
 const saveP=(me,to)=>db.set(`p:${n(me)}`,{wants:n(to),ts:Date.now()});
 const loadP=async u=>{const d=await db.get(`p:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
-const clearU=me=>["p","st","mom","cal","wish","drm","trv","mood","shop","places"].forEach(k=>db.del(`${k}:${n(me)}`));
+const clearU=me=>["p","st"].forEach(k=>db.del(`${k}:${n(me)}`));
 const saveSt=(me,d)=>db.set(`st:${n(me)}`,{...d,ts:Date.now()});
 const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 
@@ -146,7 +146,7 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .pcursor-label{margin-top:4px;margin-left:3px;background:rgba(14,12,24,.92);border:1px solid rgba(193,66,104,.2);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:500;color:var(--ink2);white-space:nowrap;}
 
 /* ribbon */
-.ribbon{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);z-index:900;background:rgba(14,12,24,.95);border:1px solid rgba(193,66,104,.2);border-radius:999px;padding:8px 16px 8px 12px;display:flex;align-items:center;gap:7px;backdrop-filter:blur(32px) saturate(1.6);box-shadow:0 0 0 1px rgba(255,255,255,.04) inset,0 8px 32px rgba(0,0,0,.7),0 0 20px rgba(193,66,104,.06);animation:up .4s var(--e1) both;white-space:nowrap;max-width:98vw;}
+.ribbon{position:fixed;bottom:max(16px,calc(16px + env(safe-area-inset-bottom)));left:50%;transform:translateX(-50%);z-index:900;background:rgba(14,12,24,.95);border:1px solid rgba(193,66,104,.2);border-radius:999px;padding:8px 16px 8px 12px;display:flex;align-items:center;gap:7px;backdrop-filter:blur(32px) saturate(1.6);box-shadow:0 0 0 1px rgba(255,255,255,.04) inset,0 8px 32px rgba(0,0,0,.7),0 0 20px rgba(193,66,104,.06);animation:up .4s var(--e1) both;white-space:nowrap;max-width:98vw;}
 .rib-ava{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--r),#6a1128);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;text-transform:uppercase;flex-shrink:0;box-shadow:0 0 8px rgba(193,66,104,.3);}
 .rib-text{font-size:11px;font-weight:500;color:var(--ink2);}
 .rib-text b{color:var(--ink);font-weight:600;}
@@ -481,7 +481,7 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .week-add-btn:hover{background:rgba(193,66,104,.3);}
 .week-legend{display:flex;gap:14px;justify-content:center;margin-bottom:14px;font-size:10px;color:var(--ink3);}
 .week-legend-dot{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle;}
-.swipe-dots{position:fixed;bottom:calc(62px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
+.swipe-dots{position:fixed;bottom:max(62px,calc(62px + env(safe-area-inset-bottom)));left:50%;transform:translateX(-50%);z-index:895;display:none;gap:5px;padding:5px 10px;background:rgba(7,6,13,.72);border-radius:999px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.06);}
 @media(max-width:560px){.swipe-dots{display:flex;}}
 .swipe-dot{width:5px;height:5px;border-radius:50%;background:rgba(243,239,244,.18);transition:all .3s var(--e1);flex-shrink:0;}
 .swipe-dot.on{background:var(--r);width:14px;border-radius:3px;box-shadow:0 0 6px rgba(193,66,104,.5);}
@@ -1114,7 +1114,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[pSc,sPSc]=useState(null);const[pCu,sPCu]=useState(null);
   const[reacts,sReacts]=useState(false);const[floats,sF]=useState([]);const rid=useRef(0);
   const[chat,sChat]=useState(false);const[msgs,sMsgs]=useState([]);const[cinp,sCInp]=useState("");const[unread,sUnread]=useState(0);const lastTs=useRef(0);const msEnd=useRef(null);
-  useEffect(()=>{msEnd.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+  useEffect(()=>{if(msgs.length>0)msEnd.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
   const[isRec,sRec]=useState(false);const mrRef=useRef(null);const chunks=useRef([]);const recSt=useRef(null);
   const[myKiss,sMK]=useState(false);const[ptKiss,sPK]=useState(false);const[kissStart,sKS]=useState(null);const kTK=useRef(0);const[kToast,sKT]=useState(null);
   const[vibe,sVibe]=useState(false);const[vibeR,sVR]=useState(null);const lastVT=useRef(0);
@@ -1156,7 +1156,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   );
   const sendReact=async em=>{sReacts(false);const x=35+Math.random()*30,y=25+Math.random()*44;const id=++rid.current;sF(p=>[...p,{id,emoji:em,x:`${x}%`,y:`${y}%`}]);const s=await loadSt(me)||{};await saveSt(me,{...s,reaction:{emoji:em,x,y,ts:Date.now()}});};
   const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();sMsgs(p=>[...p,{text,from:me,ts,vd,vdur}]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{text,ts,vd,vdur}});};
-  const startRec=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mime=MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":MediaRecorder.isTypeSupported("audio/mp4")?"audio/mp4":"audio/ogg";const mr=new MediaRecorder(stream,{mimeType:mime});chunks.current=[];mr.ondataavailable=e=>chunks.current.push(e.data);mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,{type:mime});if(blob.size>10){const dur=(Date.now()-recSt.current)/1000;const reader=new FileReader();reader.onloadend=async()=>{await sendMsg("🎤 Голосовое",reader.result.split(",")[1],dur);};reader.readAsDataURL(blob);}sRec(false);};mr.start();mrRef.current=mr;recSt.current=Date.now();sRec(true);setTimeout(()=>{if(mr.state==="recording")mr.stop();},30000);}catch(e){}};
+  const startRec=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mime=["audio/webm","audio/mp4","audio/ogg"].find(t=>MediaRecorder.isTypeSupported(t))||"";const mr=new MediaRecorder(stream,mime?{mimeType:mime}:{});chunks.current=[];mr.ondataavailable=e=>chunks.current.push(e.data);mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,mime?{type:mime}:{});if(blob.size>10){const dur=(Date.now()-recSt.current)/1000;const reader=new FileReader();reader.onloadend=async()=>{await sendMsg("🎤 Голосовое",reader.result.split(",")[1],dur);};reader.readAsDataURL(blob);}sRec(false);};mr.start();mrRef.current=mr;recSt.current=Date.now();sRec(true);setTimeout(()=>{if(mr.state==="recording")mr.stop();},30000);}catch(e){}};
   const stopRec=()=>{if(mrRef.current?.state==="recording")mrRef.current.stop();};
   const startKiss=async()=>{sMK(true);const ts=Date.now();await flush({kissing:true,kissTs:ts});if(ptKiss)sKS(ts);};
   const endKiss=async()=>{if(!myKiss)return;const dur=kissStart?Math.floor((Date.now()-kissStart)/1000):null;sMK(false);sKS(null);await flush({kissing:false});if(ptKiss&&dur&&dur>0){const k=++kTK.current;sKT({k,dur});setTimeout(()=>sKT(t=>t?.k===k?null:t),4500);}};
@@ -1274,17 +1274,17 @@ export default function App(){
   const[ptI,sPtI]=useState("");
   const[surpI,sSurpI]=useState("");
   const[err,sErr]=useState("");const[ca,sCA]=useState(null);const[copied,sCopied]=useState(false);
-  const poll=useRef(null);const burst=useRef(null);const lastUsername=useRef("");
+  const poll=useRef(null);const burst=useRef(null);
 
   useEffect(()=>{const s=document.createElement("style");s.textContent=CSS;document.head.appendChild(s);return()=>document.head.removeChild(s);},[]);
-  useEffect(()=>{if(username){sMeI(username);lastUsername.current=username;}},[username]);
+  useEffect(()=>{if(username)sMeI(username);},[username]);
   useEffect(()=>{if(startParam&&!ptI)sPtI(startParam);},[startParam]);
 
   const startPoll=useCallback((myN,ptN)=>{poll.current=setInterval(async()=>{const d=await loadP(ptN);if(d&&d.wants===n(myN)){clearInterval(poll.current);sMe(myN);sPt(ptN);sPhase("burst");burst.current=setTimeout(()=>{sCA(Date.now());sPhase("landing");},3000);}},1500);},[]);
   useEffect(()=>()=>{clearInterval(poll.current);clearTimeout(burst.current);if(me)clearU(me);amb.stop();},[me]);
 
   const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");await saveP(myN,ptN);sPhase("waiting");startPoll(myN,ptN);};
-  const disconnect=async()=>{clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(lastUsername.current||"");sPtI("");sSurpI("");};
+  const disconnect=async()=>{clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(username||meI||"");sPtI("");sSurpI("");};
 
   if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
   if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
