@@ -71,33 +71,63 @@ function useOnline(){
 const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 
 /* ─── AMBIENT ─── */
+const MUSIC_BASE=`${import.meta.env.BASE_URL}music`;
 const TRACKS=[
-  {id:"1",name:"Романтика",icon:"🌹"},
-  {id:"2",name:"Мечты",icon:"🌙"},
-  {id:"3",name:"Нежность",icon:"💕"},
-  {id:"4",name:"Страсть",icon:"🔥"},
-  {id:"5",name:"Покой",icon:"🌊"},
-  {id:"6",name:"Радость",icon:"✨"},
+  {id:"1",name:"Say Yes to Heaven",icon:"🌙",src:`${MUSIC_BASE}/t1.mp3`},
+  {id:"2",name:"Summertime Sadness",icon:"🌹",src:`${MUSIC_BASE}/t2.mp3`},
+  {id:"3",name:"Video Games",icon:"💕",src:`${MUSIC_BASE}/t3.mp3`},
+  {id:"4",name:"Young & Beautiful",icon:"✨",src:`${MUSIC_BASE}/t4.mp3`},
+  {id:"5",name:"Born to Die",icon:"🥀",src:`${MUSIC_BASE}/t5.mp3`},
+  {id:"6",name:"Paradise",icon:"🌊",src:`${MUSIC_BASE}/t6.mp3`},
 ];
-function buildPad(ctx,dest,rootHz,mode="romantic"){
-  const rev=ctx.createConvolver();
-  const buf=ctx.createBuffer(2,ctx.sampleRate*2,ctx.sampleRate);
-  for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<buf.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/buf.length,3);}
-  rev.buffer=buf;
-  rev.connect(dest);
-  const master=ctx.createGain();
-  master.gain.setValueAtTime(0,0);
-  master.gain.linearRampToValueAtTime(0.12,ctx.currentTime+3);
-  master.connect(rev);
-  master.connect(dest);
-  const intervals={romantic:[1,1.2,1.5,2,2.4,3],dreamy:[1,1.19,1.5,1.78,2.38,3],tender:[1,1.25,1.5,2,2.5,3.17],passion:[1,1.12,1.5,1.78,2.25,2.97],calm:[1,1.33,1.5,2,2.67,4],joy:[1,1.25,1.6,2,2.5,3.2]};
-  const modes=["romantic","dreamy","tender","passion","calm","joy"];
-  const idx=parseInt(mode)-1;
-  const ints=intervals[modes[idx>=0&&idx<6?idx:0]]||intervals.romantic;
-  ints.forEach((ratio,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),lfo=ctx.createOscillator(),lg=ctx.createGain();o.type=i<2?"sine":"triangle";o.frequency.value=rootHz*ratio;lfo.frequency.value=0.05+i*0.02;lg.gain.value=1.2;lfo.connect(lg);lg.connect(o.frequency);g.gain.value=0.06-i*0.007;o.connect(g);g.connect(master);o.start();lfo.start();});
-  return master;
+
+class Amb{
+  constructor(){
+    this.audio=null;
+    this.trackId="1";
+    this._fadeTimer=null;
+  }
+
+  start(id){
+    this.stop();
+    this.trackId=id||this.trackId;
+    const track=TRACKS.find(t=>t.id===this.trackId)||TRACKS[0];
+    const a=new Audio(track.src);
+    a.loop=true;
+    a.volume=0;
+    a.play().catch(()=>{});
+    this.audio=a;
+    let v=0;
+    this._fadeTimer=setInterval(()=>{
+      if(!this.audio)return clearInterval(this._fadeTimer);
+      v=Math.min(v+0.015,0.4);
+      this.audio.volume=v;
+      if(v>=0.4)clearInterval(this._fadeTimer);
+    },80);
+  }
+
+  switchTo(id){
+    const was=this.playing;
+    this.stop();
+    this.trackId=id;
+    if(was)this.start(id);
+  }
+
+  stop(){
+    clearInterval(this._fadeTimer);
+    if(!this.audio)return;
+    const a=this.audio;
+    this.audio=null;
+    let v=a.volume;
+    const fade=setInterval(()=>{
+      v=Math.max(v-0.03,0);
+      a.volume=v;
+      if(v<=0){clearInterval(fade);a.pause();a.src="";}
+    },60);
+  }
+
+  get playing(){return!!(this.audio&&!this.audio.paused);}
 }
-class Amb{constructor(){this.ctx=null;this.master=null;this.trackId="1";}start(id){this.stop();this.trackId=id||this.trackId;this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.master=buildPad(this.ctx,this.ctx.destination,220,this.trackId);}switchTo(id){const was=this.playing;this.stop();this.trackId=id;if(was)this.start(id);}stop(){if(!this.ctx)return;try{if(this.master)this.master.gain.linearRampToValueAtTime(0,this.ctx.currentTime+1.5);const ctx=this.ctx;this.ctx=null;this.master=null;setTimeout(()=>{try{ctx.close();}catch(e){}},1600);}catch(e){this.ctx=null;this.master=null;}}get playing(){return!!this.ctx;}}
 const amb=new Amb();
 function playSound(type){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);const sounds={kiss:{freq:880,type:"sine",dur:.18,vol:.3},react:{freq:660,type:"sine",dur:.12,vol:.25},vibe:{freq:220,type:"sawtooth",dur:.1,vol:.2},chat:{freq:540,type:"sine",dur:.15,vol:.2},music:{freq:440,type:"sine",dur:.2,vol:.25}};const s=sounds[type]||sounds.react;o.type=s.type;o.frequency.setValueAtTime(s.freq,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(s.freq*1.5,ctx.currentTime+s.dur);g.gain.setValueAtTime(s.vol,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+s.dur);o.start();o.stop(ctx.currentTime+s.dur);setTimeout(()=>ctx.close(),500);}catch(e){}}
 
