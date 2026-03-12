@@ -670,7 +670,7 @@ function PromisesSec({pid,me}){
 }
 
 /* ─── KISS COUNTER ─── */
-function ProfileSec({pid,me,partner,daysT,tgPhotoUrl}){
+function ProfileSec({pid,me,partner,daysT,tgPhotoUrl,theme,applyTheme}){
   const c=coll("prof",pid);
   const[data,sData]=useState(null);
   const[editing,sEditing]=useState(false);
@@ -689,6 +689,21 @@ function ProfileSec({pid,me,partner,daysT,tgPhotoUrl}){
       <div className="sec-in">
         <span className="brow">Профиль пары</span>
         <h2 className="sh"><em>Ваша</em> история</h2>
+        {/* Theme switcher */}
+        <div style={{display:"flex",gap:10,justifyContent:"center",margin:"20px 0"}}>
+          {[
+            {id:"midnight",c:"#c14268",label:"Ночь"},
+            {id:"blush",c:"#e8748a",label:"Розовый"},
+            {id:"golden",c:"#b8924a",label:"Золото"},
+            {id:"ocean",c:"#4ab8c1",label:"Океан"},
+          ].map(t=>(
+            <div key={t.id} onClick={()=>applyTheme(t.id)}
+              title={t.label}
+              style={{width:28,height:28,borderRadius:"50%",background:t.c,cursor:"pointer",
+                border:`2px solid ${theme===t.id?"rgba(255,255,255,.8)":"transparent"}`,
+                transition:"transform .2s,border .2s",transform:theme===t.id?"scale(1.2)":"scale(1)"}}/>
+          ))}
+        </div>
         <div className="prof-wrap">
           <div className="prof-avs">
             {tgPhotoUrl?<img className="prof-av" src={tgPhotoUrl} alt={me}/>:<div className="prof-av prof-av-me">{meInitial}</div>}
@@ -1122,6 +1137,16 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[surp,sSurp]=useState(false);const sFired=useRef(false);
   const scroll=useRef(null);const sRefs=useRef({});const st=useRef({scroll:0,cursor:null});const saveT=useRef(0);
   const pid=pair(me,partner);
+  const[theme,setTheme]=useState("midnight");
+  const applyTheme=id=>{
+    setTheme(id);
+    const themeMap={midnight:["#c14268","#9a2f4e"],blush:["#e8748a","#c45570"],golden:["#b8924a","#8a6a2e"],ocean:["#4ab8c1","#2e8a94"]};
+    const[r,r2]=(themeMap[id]||themeMap.midnight);
+    document.documentElement.style.setProperty("--r",r);
+    document.documentElement.style.setProperty("--r2",r2);
+    if(pid)db.set(`theme:${pid}`,id);
+  };
+  useEffect(()=>{if(pid)db.get(`theme:${pid}`).then(t=>{if(t)applyTheme(t);});},[pid]);
 
   const flush=useCallback(async(extra={})=>{const now=Date.now();if(now-saveT.current<380)return;saveT.current=now;await saveSt(me,{scroll:st.current.scroll,cursor:st.current.cursor,...extra});},[me]);
 
@@ -1189,7 +1214,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       </section>
 
       <div className="hr"/>
-      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl}/></section>
+      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl} theme={theme} applyTheme={applyTheme}/></section>
       <div className="hr"/>
       <section id="mood" ref={el=>sRefs.current.mood=el}><MoodSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
