@@ -1122,7 +1122,7 @@ function MapSec({pid,me}){
   useEffect(()=>{
     if(!ready||!mapRef.current||mapI.current||!window.L)return;
     const map=window.L.map(mapRef.current,{zoomControl:true}).setView([55.75,37.62],4);
-    window.L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{attribution:"©OpenStreetMap ©CartoDB",maxZoom:19}).addTo(map);
+    window.L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19}).addTo(map);
     map.on("click",e=>{
       if(!mapI._adding)return;
       sPending({lat:e.latlng.lat,lng:e.latlng.lng});
