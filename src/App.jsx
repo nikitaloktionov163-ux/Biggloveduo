@@ -67,15 +67,27 @@ function useOnline(){
 const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 
 /* ─── AMBIENT ─── */
+function makeReverb(ctx,seconds=3,decay=2){const conv=ctx.createConvolver();const rate=ctx.sampleRate;const len=rate*seconds;const buf=ctx.createBuffer(2,len,rate);for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);}conv.buffer=buf;return conv;}
+const AMIN=[220,261.6,293.7,329.6,392,440,523.2,659.2];
+function buildMelody(ctx,dest,notes,bpm=52){
+  const rev=makeReverb(ctx,4,1.8);rev.connect(dest);
+  const master=ctx.createGain();master.gain.setValueAtTime(0,0);master.gain.linearRampToValueAtTime(0.18,ctx.currentTime+4);master.connect(rev);master.connect(dest);
+  const beat=60/bpm;let time=ctx.currentTime+1;const osc_refs=[];
+  const playNote=(freq,start,dur,vol=0.15)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.setValueAtTime(freq,start);const vib=ctx.createOscillator(),vibg=ctx.createGain();vib.frequency.value=4.5;vibg.gain.value=2.5;vib.connect(vibg);vibg.connect(o.frequency);g.gain.setValueAtTime(0,start);g.gain.linearRampToValueAtTime(vol,start+0.08);g.gain.setValueAtTime(vol,start+dur-0.15);g.gain.linearRampToValueAtTime(0,start+dur);o.connect(g);g.connect(master);o.start(start);o.stop(start+dur+0.1);vib.start(start);vib.stop(start+dur+0.1);osc_refs.push(o,vib);};
+  const chords=[[220,261.6,329.6],[174.6,220,261.6],[261.6,329.6,392],[196,246.9,293.7]];
+  const scheduleLoop=()=>{let t=ctx.currentTime+0.5;for(let rep=0;rep<8;rep++){chords.forEach(chord=>{chord.forEach(f=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f/2;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.04,t+0.3);g.gain.setValueAtTime(0.04,t+beat*4-0.3);g.gain.linearRampToValueAtTime(0,t+beat*4);o.connect(g);g.connect(master);o.start(t);o.stop(t+beat*4+0.1);osc_refs.push(o);});t+=beat*4;});}};scheduleLoop();
+  notes.forEach(([ni,beats,vol=0.18])=>{playNote(AMIN[ni],time,beats*beat,vol);time+=beats*beat;});
+  return{master,osc_refs};
+}
 const TRACKS=[
-  {id:"dreamy",name:"Мечтательно",icon:"🌙",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.04,ctx.currentTime+4);m.connect(dest);[[196,.38],[246.9,.28],[329.6,.18],[392,.09]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain(),l=ctx.createOscillator(),lg=ctx.createGain();o.type="sine";o.frequency.value=f;l.type="sine";l.frequency.value=.04+Math.random()*.035;lg.gain.value=1.1;l.connect(lg);lg.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();l.start();});return m;}},
-  {id:"romantic",name:"Романтично",icon:"🌹",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.05,ctx.currentTime+3);m.connect(dest);[[261.6,.35],[329.6,.3],[392,.2],[523.2,.15],[659.2,.1]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain(),lfo=ctx.createOscillator(),lfog=ctx.createGain();o.type="sine";o.frequency.value=f;lfo.frequency.value=.06+Math.random()*.04;lfog.gain.value=1.5;lfo.connect(lfog);lfog.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
-  {id:"tender",name:"Нежно",icon:"💕",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.035,ctx.currentTime+5);m.connect(dest);[[523.2,.25],[659.2,.2],[783.9,.15],[1046.5,.08]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const tr=ctx.createOscillator(),trg=ctx.createGain();tr.frequency.value=.03;trg.gain.value=0.8;tr.connect(trg);trg.connect(g.gain);g.gain.value=v;o.connect(g);g.connect(m);o.start();tr.start();});return m;}},
-  {id:"passion",name:"Страсть",icon:"🔥",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.045,ctx.currentTime+2);m.connect(dest);[[110,.3],[146.8,.25],[196,.2],[220,.15],[293.6,.1]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=f<150?"triangle":"sine";o.frequency.value=f;const lfo=ctx.createOscillator(),lfog=ctx.createGain();lfo.frequency.value=.08+Math.random()*.06;lfog.gain.value=2;lfo.connect(lfog);lfog.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
-  {id:"calm",name:"Покой",icon:"🌊",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.03,ctx.currentTime+6);m.connect(dest);[[174.6,.4],[220,.3],[261.6,.2],[349.2,.1]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const lfo=ctx.createOscillator(),lfog=ctx.createGain();lfo.frequency.value=.02;lfog.gain.value=2.5;lfo.connect(lfog);lfog.connect(g.gain);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
-  {id:"joy",name:"Радость",icon:"✨",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.04,ctx.currentTime+2);m.connect(dest);[[392,.3],[493.9,.25],[587.3,.2],[698.5,.15],[783.9,.1],[987.8,.07]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const lfo=ctx.createOscillator(),lfog=ctx.createGain();lfo.frequency.value=.07+Math.random()*.05;lfog.gain.value=1.2;lfo.connect(lfog);lfog.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
+  {id:"lana",name:"Say Yes to Heaven",icon:"🌙",build:(ctx,dest)=>{const notes=[[4,3],[5,2],[4,2],[3,3],[2,4],[3,2],[4,2],[5,3],[6,2],[5,4],[4,3],[3,2],[2,2],[1,3],[0,4],[2,2],[3,2],[4,3],[5,2],[4,6]];return buildMelody(ctx,dest,notes,48).master;}},
+  {id:"summertime",name:"Summertime Sadness",icon:"🌹",build:(ctx,dest)=>{const notes=[[5,4],[4,2],[5,2],[6,4],[5,3],[4,3],[3,4],[2,2],[3,2],[4,4],[3,3],[2,3],[4,4],[5,2],[6,2],[7,4],[6,3],[5,3],[4,4],[3,2],[2,2],[1,6]];return buildMelody(ctx,dest,notes,50).master;}},
+  {id:"videoGames",name:"Video Games",icon:"💕",build:(ctx,dest)=>{const notes=[[2,3],[3,2],[4,3],[5,4],[4,2],[3,2],[2,4],[1,3],[2,2],[3,3],[4,4],[3,6],[5,3],[6,2],[5,3],[4,4],[3,2],[2,2],[1,4],[0,3],[1,2],[2,6]];return buildMelody(ctx,dest,notes,46).master;}},
+  {id:"young",name:"Young and Beautiful",icon:"✨",build:(ctx,dest)=>{const notes=[[5,2],[6,2],[7,4],[6,2],[5,2],[4,4],[3,2],[4,2],[5,4],[4,2],[3,2],[2,6],[4,2],[5,2],[6,4],[5,2],[4,2],[3,4],[2,2],[3,2],[4,4],[3,2],[2,2],[1,6]];return buildMelody(ctx,dest,notes,52).master;}},
+  {id:"born",name:"Born to Die",icon:"🥀",build:(ctx,dest)=>{const notes=[[3,4],[4,3],[3,2],[2,3],[1,4],[0,4],[2,3],[3,2],[4,3],[5,4],[4,3],[3,4],[2,4],[1,3],[2,2],[3,3],[2,4],[1,6],[3,3],[4,2],[5,3],[4,4],[3,2],[2,6]];return buildMelody(ctx,dest,notes,44).master;}},
+  {id:"paradise",name:"Paradise",icon:"🌊",build:(ctx,dest)=>{const notes=[[0,3],[2,2],[3,3],[4,4],[3,2],[2,3],[1,4],[2,3],[3,2],[4,3],[5,4],[4,6],[3,3],[4,2],[5,3],[6,4],[5,2],[4,3],[3,4],[2,3],[1,2],[0,6]];return buildMelody(ctx,dest,notes,50).master;}},
 ];
-class Amb{constructor(){this.ctx=null;this.m=null;this.trackId="dreamy";}start(trackId){if(this.ctx){this.stop();}this.trackId=trackId||this.trackId;const track=TRACKS.find(t=>t.id===this.trackId)||TRACKS[0];this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.m=track.build(this.ctx,this.ctx.destination);}switchTo(trackId){const wasPlaying=!!this.ctx;if(wasPlaying)this.stop();this.trackId=trackId;if(wasPlaying)this.start(trackId);}stop(){if(!this.ctx)return;try{this.ctx.close();}catch(e){}this.ctx=null;this.m=null;}get playing(){return!!this.ctx;}}
+class Amb{constructor(){this.ctx=null;this.m=null;this.trackId="lana";}start(trackId){if(this.ctx){try{this.ctx.close();}catch(e){}this.ctx=null;}this.trackId=trackId||this.trackId;const track=TRACKS.find(t=>t.id===this.trackId)||TRACKS[0];this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.m=track.build(this.ctx,this.ctx.destination);}switchTo(trackId){const was=!!this.ctx;if(was){try{this.ctx.close();}catch(e){}this.ctx=null;}this.trackId=trackId;if(was)this.start(trackId);}stop(){if(!this.ctx)return;try{this.m?.gain?.linearRampToValueAtTime&&this.m.gain.linearRampToValueAtTime(0,this.ctx.currentTime+1);}catch(e){}setTimeout(()=>{try{this.ctx?.close();}catch(e){}this.ctx=null;this.m=null;},1100);}get playing(){return!!this.ctx;}}
 const amb=new Amb();
 function playSound(type){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);const sounds={kiss:{freq:880,type:"sine",dur:.18,vol:.3},react:{freq:660,type:"sine",dur:.12,vol:.25},vibe:{freq:220,type:"sawtooth",dur:.1,vol:.2},chat:{freq:540,type:"sine",dur:.15,vol:.2},music:{freq:440,type:"sine",dur:.2,vol:.25}};const s=sounds[type]||sounds.react;o.type=s.type;o.frequency.setValueAtTime(s.freq,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(s.freq*1.5,ctx.currentTime+s.dur);g.gain.setValueAtTime(s.vol,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+s.dur);o.start();o.stop(ctx.currentTime+s.dur);setTimeout(()=>ctx.close(),500);}catch(e){}}
 
@@ -196,8 +208,6 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 /* ribbon */
 .ribbon{position:fixed;bottom:max(16px,calc(16px + env(safe-area-inset-bottom)));left:50%;transform:translateX(-50%);z-index:900;background:rgba(10,8,20,.97);border:1px solid rgba(193,66,104,.3);border-radius:999px;padding:10px 18px 10px 14px;display:flex;align-items:center;gap:8px;backdrop-filter:blur(40px) saturate(1.8);box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 8px 40px rgba(0,0,0,.85),0 0 32px rgba(193,66,104,.12);white-space:nowrap;max-width:96vw;min-width:280px;justify-content:center;}
 .rib-ava{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--r),#6a1128);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;text-transform:uppercase;flex-shrink:0;box-shadow:0 0 8px rgba(193,66,104,.3);}
-.rib-text{font-size:11px;font-weight:500;color:var(--ink2);}
-.rib-text b{color:var(--ink);font-weight:600;}
 .rsep{width:1px;height:14px;background:rgba(193,66,104,.15);flex-shrink:0;}
 .rbtns{display:flex;gap:2px;}
 .rb{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;transition:all .18s var(--e2);position:relative;flex-shrink:0;}
@@ -1492,7 +1502,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[vibe,sVibe]=useState(false);const[vibeR,sVR]=useState(null);const lastVT=useRef(0);
   const[music,sMusic]=useState(false);
   const[trackPicker,sTrackPicker]=useState(false);
-  const[currentTrack,sCurrentTrack]=useState("dreamy");
+  const[currentTrack,sCurrentTrack]=useState("lana");
   const[surp,sSurp]=useState(false);const sFired=useRef(false);
   const scroll=useRef(null);
   const[scrollEl,sScrollEl]=useState(null);
@@ -1638,7 +1648,6 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
-        <div className="rib-text">С <b>@{n(partner)}</b></div>
         <div className="rsep"/>
         <div className="rbtns">
           <div style={{display:"flex",alignItems:"center",gap:2}}><div className={`rb ${music?"on":""}`} onClick={()=>{toggleMusic();sTrackPicker(false);}} title="Музыка">{music?<MBars/>:TRACKS.find(t=>t.id===currentTrack)?.icon||"🎵"}</div><div className="rb" style={{width:22,height:22,fontSize:9}} onClick={()=>sTrackPicker(p=>!p)} title="Выбор трека">▾</div></div>
