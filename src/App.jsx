@@ -27,6 +27,8 @@ const notifyPartner=async(partnerUsername,text,emoji="💕")=>{
 };
 const coll = (ns, id) => ({ save: v=>db.set(`${ns}:${id}`,v), load: ()=>db.get(`${ns}:${id}`).then(r=>r||[]) });
 const saveSt=(me,d)=>db.set(`st:${n(me)}`,{...d,ts:Date.now()});
+const saveP=(me,to)=>db.set(`p:${n(me)}`,{wants:n(to),ts:Date.now()});
+const loadP=async(me)=>{try{return await db.get(`p:${n(me)}`);}catch{return null;}};
 
 // Realtime channel (polling fallback)
 let realtimeChannel=null;
@@ -177,6 +179,34 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .sep{display:flex;align-items:center;gap:10px;margin:18px 0;}
 .sep::before,.sep::after{content:"";flex:1;height:1px;background:rgba(193,66,104,.12);}
 .sep span{font-size:11px;color:var(--ink3);}
+
+/* waiting */
+.wait{display:flex;flex-direction:column;align-items:center;gap:14px;padding:6px 0;animation:up .4s var(--e1) both;}
+.orb{width:68px;height:68px;border-radius:50%;background:radial-gradient(circle at 40% 35%,rgba(193,66,104,.38),rgba(193,66,104,.05));border:1px solid rgba(193,66,104,.22);display:flex;align-items:center;justify-content:center;font-size:26px;position:relative;}
+.orb::before,.orb::after{content:"";position:absolute;border-radius:50%;border:1px solid rgba(193,66,104,.1);animation:rr 2.2s ease-out infinite;}
+.orb::before{inset:-10px;}
+.orb::after{inset:-22px;animation-delay:.72s;border-color:rgba(193,66,104,.05);}
+@keyframes rr{0%{opacity:.9;transform:scale(.83)}100%{opacity:0;transform:scale(1.28)}}
+.wait-name{font-family:var(--d);font-size:20px;font-weight:700;}
+.wait-name span{color:rgba(193,66,104,.85);}
+.wait-tip{font-size:12px;font-weight:300;color:var(--ink3);text-align:center;max-width:250px;line-height:1.72;}
+.wait-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--r);vertical-align:middle;margin-right:5px;animation:blink 1.5s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.08}}
+.wait-cancel{font-size:12px;color:var(--ink3);cursor:pointer;text-decoration:underline;text-underline-offset:3px;transition:color .2s;}
+.wait-cancel:hover{color:var(--ink2);}
+
+/* burst */
+.burst{position:fixed;inset:0;z-index:1001;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--c0);animation:brst 3s var(--e1) forwards;pointer-events:none;overflow:hidden;}
+@keyframes brst{0%,55%{opacity:1}100%{opacity:0}}
+.burst-p{position:absolute;animation:bp linear forwards;opacity:0;}
+@keyframes bp{0%{transform:translateY(0) rotate(var(--r)) scale(.5);opacity:0}10%{opacity:.9}100%{transform:translateY(-88vh) rotate(calc(var(--r) + 220deg)) scale(.5);opacity:0}}
+.burst-ring{width:100px;height:100px;border-radius:50%;border:1.5px solid var(--r);display:flex;align-items:center;justify-content:center;animation:pop .58s var(--e2) .08s both;box-shadow:0 0 40px rgba(193,66,104,.4),0 0 80px rgba(193,66,104,.15);}
+@keyframes pop{from{transform:scale(.12);opacity:0}to{transform:scale(1);opacity:1}}
+.burst-icon{font-size:40px;animation:pop .65s var(--e2) .2s both;}
+.burst-h{font-family:var(--d);font-size:clamp(28px,5.5vw,42px);font-weight:700;margin-top:24px;animation:su .7s var(--e1) .32s both;}
+.burst-s{font-size:13px;color:var(--ink2);margin-top:5px;animation:su .7s var(--e1) .46s both;}
+.burst-s span{color:rgba(193,66,104,.85);}
+@keyframes su{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
 
 /* ── APP SHELL ── */
 .app{height:100svh;overflow-y:scroll;overflow-x:hidden;position:relative;scroll-behavior:smooth;}
@@ -1945,35 +1975,69 @@ class ErrBound extends React.Component {
   }
 }
 
+const _ses=()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s):null;}catch{return null;}};
+
 export default function App(){
   const[showOb,sShowOb]=useState(()=>!localStorage.getItem("duo_ob_done"));
   const doneOb=()=>{localStorage.setItem("duo_ob_done","1");sShowOb(false);};
-  const savedSession=()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s):null;}catch{return null;}};
-  const[phase,sPhase]=useState(()=>savedSession()?"landing":"connect");
-  const[me,sMe]=useState(()=>savedSession()?.me||"");
-  const[partner,sPt]=useState(()=>savedSession()?.partner||"");
+  const[phase,sPhase]=useState(()=>_ses()?"landing":"connect");
+  const[me,sMe]=useState(()=>_ses()?.me||"");
+  const[partner,sPt]=useState(()=>_ses()?.partner||"");
   const{ok,username,startParam,photoUrl,share}=useTG();
   const[meI,sMeI]=useState("");
   const[ptI,sPtI]=useState("");
-  const[surpI,sSurpI]=useState("");
-  const[err,sErr]=useState("");const[ca,sCA]=useState(()=>savedSession()?.ca||null);const[copied,sCopied]=useState(false);
+  const[surpI,sSurpI]=useState(()=>_ses()?.surp||"");
+  const[err,sErr]=useState("");const[ca,sCA]=useState(()=>_ses()?.ca||null);const[copied,sCopied]=useState(false);
+  const poll=useRef(null);const burst=useRef(null);
 
   useEffect(()=>{const s=document.createElement("style");s.textContent=CSS;document.head.appendChild(s);return()=>document.head.removeChild(s);},[]);
   useEffect(()=>{if(username)sMeI(username);},[username]);
   useEffect(()=>{if(startParam&&!ptI)sPtI(startParam);},[startParam]);
-  useEffect(()=>()=>{amb.stop();},[]);
+  useEffect(()=>()=>{clearInterval(poll.current);clearTimeout(burst.current);if(me)db.del(`p:${n(me)}`);amb.stop();},[me]);
 
-  const connect=()=>{
-    const myN=meI.trim(),ptN=ptI.trim();
+  const startPoll=useCallback((myN,ptN)=>{
+    const myNorm=n(myN);
+    const ptNorm=n(ptN);
+    let attempts=0;
+    poll.current=setInterval(async()=>{
+      attempts++;
+      try{
+        const d=await loadP(ptNorm);
+        console.log("Poll attempt",attempts,"partner data:",d,"wants:",d?.wants,"my norm:",myNorm);
+        if(d&&d.wants===myNorm){
+          clearInterval(poll.current);
+          const connAt=Date.now();
+          localStorage.setItem("duo_session",JSON.stringify({
+            me:myN, partner:ptN, ca:connAt, surp:surpI||""
+          }));
+          sMe(myN);sPt(ptN);sCA(connAt);
+          sPhase("burst");
+          burst.current=setTimeout(()=>sPhase("landing"),3000);
+        }
+        if(attempts===80){
+          sErr("Партнёр ещё не открыл приложение — отправь ему ссылку 💕");
+        }
+      }catch(e){
+        console.error("Poll error:",e);
+      }
+    },1500);
+  },[surpI]);
+
+  const connect=async()=>{
+    const myN=n(meI);
+    const ptN=n(ptI);
     if(!myN||!ptN){sErr("Заполни оба поля.");return;}
-    if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}
+    if(myN===ptN){sErr("Нельзя подключиться к самому себе 😊");return;}
     sErr("");
-    const connAt=Date.now();
-    localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
-    sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
+    await saveP(myN,ptN);
+    sPhase("waiting");
+    startPoll(myN,ptN);
   };
   const disconnect=()=>{
     localStorage.removeItem("duo_session");
+    clearInterval(poll.current);
+    clearTimeout(burst.current);
+    if(me)db.del(`p:${n(me)}`);
     amb.stop();
     sPhase("connect");
     sMe("");sPt("");sCA(null);
@@ -1981,7 +2045,8 @@ export default function App(){
   };
 
   if(showOb)return <Onboarding onDone={doneOb}/>;
-  if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
+  if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI||_ses()?.surp||""} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
+  if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
 
   return(
     <div className="co">
@@ -1989,35 +2054,47 @@ export default function App(){
       <div className="petals"><Petals/></div>
       <div className="co-card">
         <span className="co-gem">🌹</span>
-        <h1 className="co-h">Наше приложение,<br/><i>только для двоих</i></h1>
-        <p className="co-sub">Введи ники — и окажитесь в одном пространстве.</p>
-        <div className="sep"><span>✦</span></div>
-        <div className="field">
-          <label className="label">Твой ник</label>
-          <div className="iw"><span className="iat">@</span><input className="inp" placeholder="username" value={meI} onChange={e=>{sMeI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()} readOnly={!!username}/></div>
-          {ok&&username&&<p className="hint">✓ Получено из Telegram</p>}
-        </div>
-        <div className="field">
-          <label className="label">Ник партнёра</label>
-          <div className="iw"><span className="iat">@</span><input className="inp" placeholder="её или его username" value={ptI} onChange={e=>{sPtI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()}/></div>
-        </div>
-        <div className="field">
-          <label className="label">💌 Сюрприз-послание</label>
-          <textarea className="ta" placeholder="Появится когда она долистает до конца…" value={surpI} onChange={e=>sSurpI(e.target.value)}/>
-          <p className="hint">Она увидит это в самом конце 🌹</p>
-        </div>
-        {err&&<p className="err">{err}</p>}
-        <button className="btn-main" disabled={!meI.trim()||!ptI.trim()} onClick={connect}>Войти вместе 💕</button>
-        <button className="btn-main" style={{marginTop:8,opacity:.55,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"var(--ink3)"}}
-          onClick={()=>{
-            const myN=(meI.trim()||"test_me");
-            const ptN="partner_test";
-            const connAt=Date.now();
-            localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
-            sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
-          }}>
-          🧪 Войти без партнёра (тест)
-        </button>
+        {phase==="waiting"?(
+          <div className="wait">
+            <div className="orb">💌</div>
+            <div className="wait-name">Жду <span>@{n(ptI)}</span>…</div>
+            <div className="wait-tip"><span className="wait-dot"/>Попроси <strong style={{color:"var(--ink2)"}}>@{n(ptI)}</strong> открыть и ввести <strong style={{color:"var(--ink2)"}}>@{n(meI)}</strong></div>
+            <button className="btn-main" style={{opacity:.82}} onClick={()=>{share(meI.trim());sCopied(true);setTimeout(()=>sCopied(false),2000);}}>{copied?"✓ Скопировано!":(ok?"Отправить в Telegram ✈️":"Скопировать ссылку 🔗")}</button>
+            <span className="wait-cancel" onClick={async()=>{localStorage.removeItem("duo_session");clearInterval(poll.current);await db.del(`p:${n(meI.trim())}`);sPhase("connect");}}>Отменить</span>
+          </div>
+        ):(
+          <>
+            <h1 className="co-h">Наше приложение,<br/><i>только для двоих</i></h1>
+            <p className="co-sub">Введи ники — и окажитесь в одном пространстве.</p>
+            <div className="sep"><span>✦</span></div>
+            <div className="field">
+              <label className="label">Твой ник</label>
+              <div className="iw"><span className="iat">@</span><input className="inp" placeholder="username" value={meI} onChange={e=>{sMeI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()} readOnly={!!username}/></div>
+              {ok&&username&&<p className="hint">✓ Получено из Telegram</p>}
+            </div>
+            <div className="field">
+              <label className="label">Ник партнёра</label>
+              <div className="iw"><span className="iat">@</span><input className="inp" placeholder="её или его username" value={ptI} onChange={e=>{sPtI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()}/></div>
+            </div>
+            <div className="field">
+              <label className="label">💌 Сюрприз-послание</label>
+              <textarea className="ta" placeholder="Появится когда она долистает до конца…" value={surpI} onChange={e=>sSurpI(e.target.value)}/>
+              <p className="hint">Она увидит это в самом конце 🌹</p>
+            </div>
+            {err&&<p className="err">{err}</p>}
+            <button className="btn-main" disabled={!meI.trim()||!ptI.trim()} onClick={connect}>Войти вместе 💕</button>
+            <button className="btn-main" style={{marginTop:8,opacity:.55,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"var(--ink3)"}}
+              onClick={()=>{
+                const myN=(meI.trim()||"test_me");
+                const ptN="partner_test";
+                const connAt=Date.now();
+                localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
+                sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
+              }}>
+              🧪 Войти без партнёра (тест)
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
