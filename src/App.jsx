@@ -528,7 +528,33 @@ function LoveTimer({start}){const[d,sd]=useState({});useEffect(()=>{const calc=(
 const b64Blob=(b64,t)=>{const bin=atob(b64);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:t});};
 function VoicePlayer({data,dur}){const[p,sp]=useState(false);const ar=useRef(null);useEffect(()=>{if(!data)return;const url=URL.createObjectURL(b64Blob(data,"audio/webm"));const a=new Audio(url);a.onended=()=>sp(false);ar.current=a;return()=>{a.pause();URL.revokeObjectURL(url);};},[data]);const toggle=()=>{const a=ar.current;if(!a)return;if(p){a.pause();a.currentTime=0;sp(false);}else{a.play();sp(true);}};const bars=Array.from({length:14},()=>Math.max(4,Math.sin(Math.random()*3)*9+Math.random()*5+4));return <div className="vp"><button className="vp-btn" onClick={toggle}>{p?<svg width="8" height="8"><rect x="1" y="1" width="2.5" height="6" rx="1" fill="white"/><rect x="4.5" y="1" width="2.5" height="6" rx="1" fill="white"/></svg>:<svg width="8" height="8"><path d="M1.5 1l5.5 3-5.5 3V1z" fill="white"/></svg>}</button><div className="vp-bars">{bars.map((h,i)=><div key={i} className="vp-bar" style={{height:p?`${h}px`:"3px"}}/>)}</div><span className="vp-dur">0:{String(Math.round(dur||0)).padStart(2,"0")}</span></div>;}
 function daysUntil(ds){const now=new Date();now.setHours(0,0,0,0);const d=new Date(ds);const nx=new Date(now.getFullYear(),d.getMonth(),d.getDate());if(nx<now)nx.setFullYear(now.getFullYear()+1);return Math.round((nx-now)/86400000);}
-function useSwipe(onLeft,onRight,threshold=58){const st=useRef(null);const onTouchStart=e=>{st.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};const onTouchEnd=e=>{if(!st.current)return;const dx=e.changedTouches[0].clientX-st.current.x;const dy=e.changedTouches[0].clientY-st.current.y;st.current=null;if(Math.abs(dy)>Math.abs(dx)*1.1||Math.abs(dx)<threshold)return;dx<0?onLeft():onRight();};return{onTouchStart,onTouchEnd};}
+function useSwipe(onLeft,onRight,threshold=72,targetRef){
+  const st=useRef(null);
+  const onTouchStart=e=>{st.current={x:e.touches[0].clientX,y:e.touches[0].clientY,locked:null};};
+  const onTouchMove=e=>{
+    if(!st.current)return;
+    const dx=Math.abs(e.touches[0].clientX-st.current.x);
+    const dy=Math.abs(e.touches[0].clientY-st.current.y);
+    if(st.current.locked===null&&(dx>8||dy>8))st.current.locked=dx>dy?"h":"v";
+    if(st.current.locked==="h")e.preventDefault();
+  };
+  const onTouchEnd=e=>{
+    if(!st.current)return;
+    const dx=e.changedTouches[0].clientX-st.current.x;
+    const dy=e.changedTouches[0].clientY-st.current.y;
+    const locked=st.current.locked;
+    st.current=null;
+    if(locked!=="h"||Math.abs(dx)<threshold)return;
+    dx<0?onLeft():onRight();
+  };
+  useEffect(()=>{
+    const el=targetRef?.current;
+    if(!el)return;
+    el.addEventListener("touchmove",onTouchMove,{passive:false});
+    return()=>el.removeEventListener("touchmove",onTouchMove);
+  },[targetRef]);
+  return{onTouchStart,onTouchMove,onTouchEnd};
+}
 
 const QUOTES=[{text:"Любовь — это не то, что ты находишь. Это то, что находит тебя.",author:"Лоррейн Хэнсберри"},{text:"В твоих руках я нашёл дом, которого так долго искал.",author:""},{text:"Ты — лучшее, что случилось со мной.",author:""},{text:"Каждый день с тобой — это подарок.",author:""},{text:"Я выбираю тебя. И буду выбирать снова и снова.",author:""},{text:"Любовь измеряется не временем, а глубиной.",author:""},{text:"С тобой даже тишина звучит красиво.",author:""},{text:"Ты делаешь мой мир лучше просто своим существованием.",author:""},{text:"Наша история — моя любимая.",author:""},{text:"В мире миллиарды людей, и я рад(а), что встретил(а) именно тебя.",author:""},{text:"Любить — значит видеть человека таким, каким его задумал Бог.",author:"Достоевский"},{text:"Ты мой тихий рай.",author:""},{text:"Когда я с тобой, мне не нужно больше ничего.",author:""},{text:"Расстояние — это просто расстояние. Ты всегда со мной.",author:""},{text:"Я люблю тебя не только за то, кто ты есть, но и за то, кем я становлюсь рядом с тобой.",author:""},{text:"Настоящая любовь — это когда тебе хорошо молчать вместе.",author:""},{text:"Ты — мой любимый человек в любой версии жизни.",author:""},{text:"Мы начинались как мечта и стали реальностью.",author:""},{text:"Если бы пришлось прожить жизнь заново, я бы нашёл(ла) тебя раньше.",author:""},{text:"Любовь — это когда счастье другого важнее твоего собственного.",author:"Хаксли"},{text:"Ты — моё любимое «доброе утро» и самое грустное «спокойной ночи».",author:""},{text:"Вместе мы сильнее любой бури.",author:""},{text:"Твоя улыбка — лучшее, что я вижу каждый день.",author:""},{text:"Я не ищу идеального человека. Я нашёл(ла) тебя.",author:""},{text:"Любовь — это не глагол. Это существительное, которое ты.",author:""},{text:"С тобой даже обычный день становится особенным.",author:""},{text:"Ты — причина, по которой я верю в хорошее.",author:""},{text:"Наша любовь — не идеальная. Но она настоящая.",author:""},{text:"Я готов(а) идти рядом с тобой в любую сторону.",author:""},{text:"Любить тебя — это самое лёгкое и самое важное, что я делаю.",author:""},{text:"Дом — это не место. Это ты.",author:""},{text:"Ты меняешь мой мир одним своим присутствием.",author:""},{text:"Каждый момент с тобой — это то, о чём я буду вспоминать всю жизнь.",author:""},{text:"Нет ничего важнее того, что между нами.",author:""},{text:"Я выбрал(а) бы тебя снова в любой жизни.",author:""},{text:"С тобой я наконец понял(а), что значит быть дома.",author:""},{text:"Ты — моё самое красивое случайное стечение обстоятельств.",author:""},{text:"Любовь — это смотреть не друг на друга, а в одну сторону.",author:"Сент-Экзюпери"},{text:"Быть рядом с тобой — это уже счастье.",author:""},{text:"Ты — лучшая часть каждого моего дня.",author:""}];
 const getTodayQuote=()=>QUOTES[Math.floor(Date.now()/86400000)%QUOTES.length];
@@ -1124,7 +1150,9 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
-    ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv);}
+    ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv);},
+    72,
+    scroll
   );
   const sendReact=async em=>{sReacts(false);const x=35+Math.random()*30,y=25+Math.random()*44;const id=++rid.current;sF(p=>[...p,{id,emoji:em,x:`${x}%`,y:`${y}%`}]);const s=await loadSt(me)||{};await saveSt(me,{...s,reaction:{emoji:em,x,y,ts:Date.now()}});};
   const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();sMsgs(p=>[...p,{text,from:me,ts,vd,vdur}]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{text,ts,vd,vdur}});};
