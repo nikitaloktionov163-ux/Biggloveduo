@@ -1262,6 +1262,14 @@ export default function App(){
             </div>
             {err&&<p className="err">{err}</p>}
             <button className="btn-main" disabled={!meI.trim()||!ptI.trim()} onClick={connect}>Войти вместе 💕</button>
+            <button className="btn-main" style={{marginTop:8,opacity:.55,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"var(--ink3)"}}
+              onClick={()=>{
+                const myN=(meI.trim()||"test_me");
+                const ptN="partner_test";
+                sMe(myN);sPt(ptN);sCA(Date.now());sPhase("landing");
+              }}>
+              🧪 Войти без партнёра (тест)
+            </button>
           </>
         )}
       </div>
