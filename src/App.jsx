@@ -67,7 +67,15 @@ function useOnline(){
 const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 
 /* ─── AMBIENT ─── */
-class Amb { start(){if(this.ctx)return;this.ctx=new(window.AudioContext||window.webkitAudioContext)();const m=this.ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.04,this.ctx.currentTime+4);m.connect(this.ctx.destination);[[196,.38],[246.9,.28],[329.6,.18],[392,.09]].forEach(([f,v])=>{const o=this.ctx.createOscillator(),g=this.ctx.createGain(),l=this.ctx.createOscillator(),lg=this.ctx.createGain();o.type="sine";o.frequency.value=f;l.type="sine";l.frequency.value=.04+Math.random()*.035;lg.gain.value=1.1;l.connect(lg);lg.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();l.start();});this.m=m;}stop(){if(!this.ctx)return;try{this.ctx.close();}catch(e){}this.ctx=null;}}
+const TRACKS=[
+  {id:"dreamy",name:"Мечтательно",icon:"🌙",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.04,ctx.currentTime+4);m.connect(dest);[[196,.38],[246.9,.28],[329.6,.18],[392,.09]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain(),l=ctx.createOscillator(),lg=ctx.createGain();o.type="sine";o.frequency.value=f;l.type="sine";l.frequency.value=.04+Math.random()*.035;lg.gain.value=1.1;l.connect(lg);lg.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();l.start();});return m;}},
+  {id:"romantic",name:"Романтично",icon:"🌹",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.05,ctx.currentTime+3);m.connect(dest);[[261.6,.35],[329.6,.3],[392,.2],[523.2,.15],[659.2,.1]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain(),lfo=ctx.createOscillator(),lfog=ctx.createGain();o.type="sine";o.frequency.value=f;lfo.frequency.value=.06+Math.random()*.04;lfog.gain.value=1.5;lfo.connect(lfog);lfog.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
+  {id:"tender",name:"Нежно",icon:"💕",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.035,ctx.currentTime+5);m.connect(dest);[[523.2,.25],[659.2,.2],[783.9,.15],[1046.5,.08]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const tr=ctx.createOscillator(),trg=ctx.createGain();tr.frequency.value=.03;trg.gain.value=0.8;tr.connect(trg);trg.connect(g.gain);g.gain.value=v;o.connect(g);g.connect(m);o.start();tr.start();});return m;}},
+  {id:"passion",name:"Страсть",icon:"🔥",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.045,ctx.currentTime+2);m.connect(dest);[[110,.3],[146.8,.25],[196,.2],[220,.15],[293.6,.1]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=f<150?"triangle":"sine";o.frequency.value=f;const lfo=ctx.createOscillator(),lfog=ctx.createGain();lfo.frequency.value=.08+Math.random()*.06;lfog.gain.value=2;lfo.connect(lfog);lfog.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
+  {id:"calm",name:"Покой",icon:"🌊",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.03,ctx.currentTime+6);m.connect(dest);[[174.6,.4],[220,.3],[261.6,.2],[349.2,.1]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const lfo=ctx.createOscillator(),lfog=ctx.createGain();lfo.frequency.value=.02;lfog.gain.value=2.5;lfo.connect(lfog);lfog.connect(g.gain);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
+  {id:"joy",name:"Радость",icon:"✨",build:(ctx,dest)=>{const m=ctx.createGain();m.gain.setValueAtTime(0,0);m.gain.linearRampToValueAtTime(.04,ctx.currentTime+2);m.connect(dest);[[392,.3],[493.9,.25],[587.3,.2],[698.5,.15],[783.9,.1],[987.8,.07]].forEach(([f,v])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;const lfo=ctx.createOscillator(),lfog=ctx.createGain();lfo.frequency.value=.07+Math.random()*.05;lfog.gain.value=1.2;lfo.connect(lfog);lfog.connect(o.frequency);g.gain.value=v;o.connect(g);g.connect(m);o.start();lfo.start();});return m;}},
+];
+class Amb{constructor(){this.ctx=null;this.m=null;this.trackId="dreamy";}start(trackId){if(this.ctx){this.stop();}this.trackId=trackId||this.trackId;const track=TRACKS.find(t=>t.id===this.trackId)||TRACKS[0];this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.m=track.build(this.ctx,this.ctx.destination);}switchTo(trackId){const wasPlaying=!!this.ctx;if(wasPlaying)this.stop();this.trackId=trackId;if(wasPlaying)this.start(trackId);}stop(){if(!this.ctx)return;try{this.ctx.close();}catch(e){}this.ctx=null;this.m=null;}get playing(){return!!this.ctx;}}
 const amb=new Amb();
 function playSound(type){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);const sounds={kiss:{freq:880,type:"sine",dur:.18,vol:.3},react:{freq:660,type:"sine",dur:.12,vol:.25},vibe:{freq:220,type:"sawtooth",dur:.1,vol:.2},chat:{freq:540,type:"sine",dur:.15,vol:.2},music:{freq:440,type:"sine",dur:.2,vol:.25}};const s=sounds[type]||sounds.react;o.type=s.type;o.frequency.setValueAtTime(s.freq,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(s.freq*1.5,ctx.currentTime+s.dur);g.gain.setValueAtTime(s.vol,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+s.dur);o.start();o.stop(ctx.currentTime+s.dur);setTimeout(()=>ctx.close(),500);}catch(e){}}
 
@@ -204,6 +212,13 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .mbars{display:flex;align-items:center;gap:1.5px;height:11px;}
 .mbar{width:2px;border-radius:1px;background:rgba(193,66,104,.75);animation:mb var(--d,.5s) ease-in-out infinite alternate;}
 @keyframes mb{0%{height:2px;opacity:.35}100%{height:var(--h,10px);opacity:.9}}
+
+.track-picker{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:910;background:rgba(10,8,20,.97);border:1px solid rgba(193,66,104,.25);border-radius:20px;padding:14px;backdrop-filter:blur(40px);box-shadow:0 8px 40px rgba(0,0,0,.8);animation:up .25s var(--e1) both;display:flex;flex-direction:column;gap:6px;min-width:220px;}
+.track-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;cursor:pointer;transition:background .15s;}
+.track-item:active,.track-item.on{background:rgba(193,66,104,.15);}
+.track-icon{font-size:20px;}
+.track-name{font-size:13px;font-weight:500;color:var(--ink2);}
+.track-active{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--r);}
 
 /* float reactions */
 .fr{position:fixed;pointer-events:none;z-index:960;font-size:var(--fs,26px);animation:flt var(--dur,2.2s) var(--e1) forwards;}
@@ -1476,6 +1491,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[myKiss,sMK]=useState(false);const[ptKiss,sPK]=useState(false);const[kissStart,sKS]=useState(null);const kTK=useRef(0);const[kToast,sKT]=useState(null);
   const[vibe,sVibe]=useState(false);const[vibeR,sVR]=useState(null);const lastVT=useRef(0);
   const[music,sMusic]=useState(false);
+  const[trackPicker,sTrackPicker]=useState(false);
+  const[currentTrack,sCurrentTrack]=useState("dreamy");
   const[surp,sSurp]=useState(false);const sFired=useRef(false);
   const scroll=useRef(null);
   const[scrollEl,sScrollEl]=useState(null);
@@ -1531,7 +1548,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const startKiss=async()=>{playSound("kiss");sMK(true);const ts=Date.now();await flush({kissing:true,kissTs:ts});if(ptKiss)sKS(ts);};
   const endKiss=async()=>{if(!myKiss)return;const dur=kissStart?Math.floor((Date.now()-kissStart)/1000):null;sMK(false);sKS(null);await flush({kissing:false});if(ptKiss&&dur&&dur>0){const k=++kTK.current;sKT({k,dur});setTimeout(()=>sKT(t=>t?.k===k?null:t),4500);}};
   const sendVibe=async p=>{sVibe(false);if(navigator.vibrate){const repeats=p.intensity||1;const pattern=[...p.pat];for(let i=1;i<repeats;i++)pattern.push(100,...p.pat);navigator.vibrate(pattern);}playSound("vibe");const s=await loadSt(me)||{};await saveSt(me,{...s,vibe:{id:p.id,ts:Date.now()}});};
-  const toggleMusic=()=>{if(music){amb.stop();sMusic(false);}else{amb.start();sMusic(true);playSound("music");}};
+  const toggleMusic=()=>{if(amb.playing){amb.stop();sMusic(false);}else{amb.start(currentTrack);sMusic(true);playSound("music");}};
+  const switchTrack=id=>{amb.switchTo(id);sCurrentTrack(id);sMusic(true);sTrackPicker(false);playSound("music");};
 
   const ghostTop=pSc!==null?`calc(${pSc*100}% - 14px)`:null;
   const msSince=sd?Date.now()-new Date(sd).getTime():0;
@@ -1623,7 +1641,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
         <div className="rib-text">С <b>@{n(partner)}</b></div>
         <div className="rsep"/>
         <div className="rbtns">
-          <div className={`rb ${music?"on":""}`} onClick={toggleMusic} title="Музыка">{music?<MBars/>:"🎵"}</div>
+          <div style={{display:"flex",alignItems:"center",gap:2}}><div className={`rb ${music?"on":""}`} onClick={()=>{toggleMusic();sTrackPicker(false);}} title="Музыка">{music?<MBars/>:TRACKS.find(t=>t.id===currentTrack)?.icon||"🎵"}</div><div className="rb" style={{width:22,height:22,fontSize:9}} onClick={()=>sTrackPicker(p=>!p)} title="Выбор трека">▾</div></div>
           <div className={`rb ${vibe?"on":""}`} onClick={()=>{sVibe(p=>!p);sReacts(false);sChat(false);}} title="Вибрация">📳</div>
           <div className={`rb ${reacts?"on":""}`} onClick={()=>{sReacts(p=>!p);sVibe(false);sChat(false);}} title="Реакции">🎯</div>
           <div className={`rb ${myKiss?"kiss-on":""}`} onMouseDown={startKiss} onMouseUp={endKiss} onTouchStart={startKiss} onTouchEnd={endKiss} title="Поцелуй">💋</div>
@@ -1632,6 +1650,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
         <div className="rsep"/>
         <span className="rib-exit" onClick={onDisc}>Выйти</span>
       </div>
+      {trackPicker&&(<div className="track-picker"><div style={{fontSize:10,fontWeight:600,letterSpacing:".1em",color:"rgba(193,66,104,.6)",textTransform:"uppercase",padding:"0 4px 6px"}}>Атмосфера</div>{TRACKS.map(t=>(<div key={t.id} className={`track-item ${currentTrack===t.id?"on":""}`} onClick={()=>switchTrack(t.id)}><span className="track-icon">{t.icon}</span><span className="track-name">{t.name}</span>{currentTrack===t.id&&<span className="track-active"/>}</div>))}</div>)}
     </div>
   );
 }
