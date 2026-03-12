@@ -597,7 +597,7 @@ function useSwipe(onLeft,onRight,threshold=72,targetRef=null){
   handlers.current={onLeft,onRight};
 
   useEffect(()=>{
-    const el=targetRef?.current||document.body;
+    const el=targetRef?.current;
     if(!el)return;
 
     const onStart=e=>{
@@ -637,7 +637,7 @@ function useSwipe(onLeft,onRight,threshold=72,targetRef=null){
       el.removeEventListener("touchmove",onMove);
       el.removeEventListener("touchend",onEnd);
     };
-  },[targetRef]);
+  },[targetRef?.current]);
 
   return {};
 }
