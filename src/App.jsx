@@ -20,6 +20,11 @@ const db = {
   get: async k=>{ try{const r=await sb(k);return r?JSON.parse(r):null;}catch{return null;} },
   del: k=>sb(k,null).catch(()=>{}),
 };
+const TG_BOT_TOKEN=import.meta.env.VITE_TG_BOT_TOKEN||"";
+const notifyPartner=async(partnerUsername,text,emoji="💕")=>{
+  if(!TG_BOT_TOKEN||!partnerUsername)return;
+  try{await db.set(`notify:${n(partnerUsername)}:${Date.now()}`,{text:`${emoji} ${text}`,ts:Date.now()});}catch(e){}
+};
 const coll = (ns, id) => ({ save: v=>db.set(`${ns}:${id}`,v), load: ()=>db.get(`${ns}:${id}`).then(r=>r||[]) });
 const saveP=(me,to)=>db.set(`p:${n(me)}`,{wants:n(to),ts:Date.now()});
 const loadP=async u=>{const d=await db.get(`p:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
@@ -109,6 +114,24 @@ const CSS = `
   --teal:#4ab8c1;--mint:#35c97e;
   --glass:rgba(20,18,33,.85);
   --e1:cubic-bezier(.22,1,.36,1);--e2:cubic-bezier(.34,1.56,.64,1);
+}
+@media(prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --c0:#faf8f5;--c1:#f2ede8;--c2:#ede6df;--c3:#e4dbd2;
+    --ink:#1a1420;--ink2:rgba(26,20,32,.7);--ink3:rgba(26,20,32,.35);--ink4:rgba(26,20,32,.08);
+    --r:#b8365a;--r2:#8a2440;--r3:rgba(184,54,90,.12);--r4:rgba(184,54,90,.04);
+    --glass:rgba(250,248,245,.9);
+  }
+}
+[data-theme="light"]{
+  --c0:#faf8f5;--c1:#f2ede8;--c2:#ede6df;--c3:#e4dbd2;
+  --ink:#1a1420;--ink2:rgba(26,20,32,.7);--ink3:rgba(26,20,32,.35);--ink4:rgba(26,20,32,.08);
+  --r:#b8365a;--r2:#8a2440;--r3:rgba(184,54,90,.12);--r4:rgba(184,54,90,.04);
+  --glass:rgba(250,248,245,.9);
+}
+[data-theme="dark"]{
+  --c0:#07060d;--c1:#0e0c18;--c2:#141221;--c3:#1c192b;
+  --ink:#f3eff4;--ink2:rgba(243,239,244,.6);--ink3:rgba(243,239,244,.28);--ink4:rgba(243,239,244,.1);
 }
 html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:var(--b);-webkit-font-smoothing:antialiased;}
 ::selection{background:rgba(193,66,104,.35);}
@@ -781,6 +804,65 @@ function HeroSec({me,partner,connectedAt,pid,tgPhotoUrl}){
   );
 }
 
+function TodaySec({pid,me,partner}){
+  const weekKey=()=>{const d=new Date();const dow=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-(dow===0?6:dow-1));return mon.toISOString().split('T')[0];};
+  const[data,setData]=useState(null);
+  const today=new Date();
+  const dayName=["Воскресенье","Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"][today.getDay()];
+  const dateStr=today.toLocaleDateString("ru-RU",{day:"numeric",month:"long"});
+
+  useEffect(()=>{
+    if(!pid)return;
+    const load=async()=>{
+      const dayId=["sun","mon","tue","wed","thu","fri","sat"][today.getDay()];
+      const wk=weekKey();
+      const[plan,mood,evs,ptMood]=await Promise.all([db.get(`plan:${pid}:${wk}`),db.get(`mood:${n(me)}`),db.get(`cal:${pid}`),db.get(`mood:${n(partner)}`)]);
+      const todayItems=(plan||{})[dayId]||[];
+      const todayDate=today.toISOString().slice(0,10);
+      const todayEvs=(evs||[]).filter(e=>e.dt===todayDate);
+      setData({plan:todayItems,mood,ptMood,events:todayEvs});
+    };
+    load();
+    const iv=setInterval(load,30000);
+    return()=>clearInterval(iv);
+  },[pid,me,partner]);
+
+  const myMoodToday=data?.mood?.date===new Date().toISOString().slice(0,10);
+
+  return(
+    <div className="sec" id="today">
+      <div className="sec-in">
+        <span className="brow">Сегодня</span>
+        <h2 className="sh" style={{marginBottom:4}}>{dayName}, <em>{dateStr}</em></h2>
+        {data?.events?.length>0&&(
+          <div style={{background:"linear-gradient(135deg,rgba(184,146,74,.12),rgba(193,66,104,.06))",border:"1px solid rgba(184,146,74,.2)",borderRadius:16,padding:"14px 16px",marginBottom:10}}>
+            {data.events.map(ev=>(<div key={ev.id} style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:24}}>{ev.em}</span><div><div style={{fontSize:14,fontWeight:600,color:"var(--g)"}}>{ev.t}</div>{ev.ds&&<div style={{fontSize:12,color:"var(--ink3)"}}>{ev.ds}</div>}</div></div>))}
+          </div>
+        )}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"12px",textAlign:"center"}}>
+            <div style={{fontSize:10,color:"var(--ink3)",marginBottom:6}}>Моё настроение</div>
+            <div style={{fontSize:28}}>{myMoodToday?data.mood.emoji:"❓"}</div>
+            <div style={{fontSize:11,color:"var(--ink3)",marginTop:4}}>{myMoodToday?"Выбрано":"Не выбрано"}</div>
+          </div>
+          <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"12px",textAlign:"center"}}>
+            <div style={{fontSize:10,color:"var(--ink3)",marginBottom:6}}>@{n(partner)}</div>
+            <div style={{fontSize:28}}>{data?.ptMood?.emoji||"❓"}</div>
+            <div style={{fontSize:11,color:"var(--ink3)",marginTop:4}}>{data?.ptMood?.emoji?"Выбрано":"Не выбрано"}</div>
+          </div>
+        </div>
+        {data?.plan?.length>0&&(
+          <div style={{background:"rgba(74,184,193,.04)",border:"1px solid rgba(74,184,193,.1)",borderRadius:14,padding:"14px 16px"}}>
+            <div style={{fontSize:10,color:"var(--teal)",fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",marginBottom:10}}>Планы на сегодня</div>
+            {data.plan.map((p,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:i<data.plan.length-1?8:0}}><span style={{width:6,height:6,borderRadius:"50%",background:p.by===me?"var(--r)":"var(--teal)",flexShrink:0,marginTop:5}}/><div>{p.time&&<div style={{fontSize:10,color:"var(--g)",marginBottom:1}}>🕐 {p.time}</div>}<div style={{fontSize:13,color:"var(--ink2)"}}>{p.text}</div><div style={{fontSize:10,color:"var(--ink3)"}}>@{n(p.by)}</div></div></div>))}
+          </div>
+        )}
+        {(!data?.plan?.length&&!data?.events?.length)&&<div style={{textAlign:"center",padding:"20px 0",color:"var(--ink3)",fontSize:13}}>Добавьте планы в планировщик 💕</div>}
+      </div>
+    </div>
+  );
+}
+
 /* ─── SECTIONS ─── */
 function SkeletonCards({count=3,height=80}){
   return <>{Array.from({length:count},(_,i)=>(<div key={i} className="skel" style={{height,borderRadius:16,marginBottom:10,opacity:1-i*0.2}}/>))}</>;
@@ -965,7 +1047,7 @@ function CalSec({pid,me}){
 const MOM_EM=["🌹","💕","✨","😍","🥰","💋","🫶","🌙","☕","🎵","🌊","🏔️","💌","🎉","🌸","🤍"];
 const TAGS=[{id:"happy",l:"Счастье"},{id:"tender",l:"Нежность"},{id:"funny",l:"Смешно"},{id:"important",l:"Важно"}];
 function MemoryOverlay({item,onClose,onAnother}){if(!item)return null;const tagLbl=TAGS.find(t=>t.id===item.tag)?.l||"Важно";return(<div className="mem-overlay" onClick={onClose}><div className="mem-card" onClick={e=>e.stopPropagation()}><div className="mem-em">{item.em}</div><div className="mem-tag-chip">{tagLbl}</div><div className="mem-text">{item.txt}</div>{item.by&&<div className="mem-by">@{n(item.by)}</div>}{item.ts&&<div className="mem-date">{new Date(item.ts).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"})}</div>}<button className="mem-close" onClick={onClose}>✕</button><button className="mem-another" onClick={onAnother}>Ещё одно 💫</button></div></div>);}
-function MomSec({pid,me}){const{data:items,setData:sI,loading,refresh}=useSync(`mom:${pid}`,[],5000);const[surprise,sSurprise]=useState(null);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};await refresh([m,...items]);sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});const showAnother=()=>{if(items.length<2)return;let idx;do{idx=Math.floor(Math.random()*items.length);}while(items[idx].id===surprise?.id);sSurprise(items[idx]);};if(loading)return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>{items.length>0&&<div style={{textAlign:"center",marginBottom:20}}><button className="surprise-btn" onClick={()=>sSurprise(items[Math.floor(Math.random()*items.length)])}>💫 Удиви меня</button></div>}<div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div>{surprise&&<MemoryOverlay item={surprise} onClose={()=>sSurprise(null)} onAnother={showAnother}/>}</div></div>);}
+function MomSec({pid,me,partner}){const{data:items,setData:sI,loading,refresh}=useSync(`mom:${pid}`,[],5000);const[surprise,sSurprise]=useState(null);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};await refresh([m,...items]);notifyPartner(partner,`@${n(me)} добавил(а) воспоминание: «${txt.slice(0,40)}»`,"🌹");sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});const showAnother=()=>{if(items.length<2)return;let idx;do{idx=Math.floor(Math.random()*items.length);}while(items[idx].id===surprise?.id);sSurprise(items[idx]);};if(loading)return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>{items.length>0&&<div style={{textAlign:"center",marginBottom:20}}><button className="surprise-btn" onClick={()=>sSurprise(items[Math.floor(Math.random()*items.length)])}>💫 Удиви меня</button></div>}<div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div>{surprise&&<MemoryOverlay item={surprise} onClose={()=>sSurprise(null)} onAnother={showAnother}/>}</div></div>);}
 
 function DreamsSec({me,partner}){const{data:my,setData:sMy,loading:loadMy,refresh:refreshMy}=useSync(`drm:${n(me)}`,[],7000);const{data:pt,setData:sPt,loading:loadPt}=useSync(`drm:${n(partner)}`,[],7000);const[inp,sI]=useState("");const add=async()=>{if(!inp.trim())return;await refreshMy([...my,{id:Date.now(),t:inp.trim(),done:false}]);sI("");};const toggle=async id=>{await refreshMy(my.map(d=>d.id===id?{...d,done:!d.done}:d));};const Col=({title,em,items,isMe})=><div className="dcol"><div className="dcol-h"><span>{em}</span>{title}</div>{items.length===0&&<p className="empty" style={{padding:"8px 0",gridColumn:"auto"}}>{isMe?"Добавь свою первую мечту…":"Мечты пока не добавлены…"}</p>}{items.map(d=><div key={d.id} className="di">{isMe?<div className={`dchk ${d.done?"ok":""}`} onClick={()=>toggle(d.id)}>{d.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>  </svg>}</div>:<span style={{fontSize:12,flexShrink:0,marginTop:1}}>{d.done?"✅":"✨"}</span>}<span className={`di-txt ${d.done?"di-done":""}`}>{d.t}</span></div>)}{isMe&&<div className="dadd"><input className="fi" placeholder="Добавить мечту…" value={inp} onChange={e=>sI(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!inp.trim()} onClick={add} style={{padding:"9px 13px"}}>+</button></div>}</div>;const loading=loadMy||loadPt;if(loading)return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div className="dcols"><Col title={`@${n(me)}`} em="🌟" items={my} isMe={true}/><Col title={`@${n(partner)}`} em="💫" items={pt} isMe={false}/></div></div></div>);}
 
@@ -975,7 +1057,7 @@ function WishesSec({pid,me,partner}){
   const sortedWishes=(items||[]).slice().sort((a,b)=>{const p={high:0,med:1,low:2};return (p[a.pr]??1)-(p[b.pr]??1);});
   const[filter,sFilter]=useState("all");
   const[t,sTi]=useState("");const[d,sD]=useState("");const[em,sE]=useState("🎁");const[pr,sPr]=useState("med");
-  const add=async()=>{if(!t.trim())return;const w={id:Date.now(),t:t.trim(),d:d.trim(),em,pr,by:me,done:false,doneBy:null};await refresh([w,...(items||[])]);sTi("");sD("");};
+  const add=async()=>{if(!t.trim())return;const w={id:Date.now(),t:t.trim(),d:d.trim(),em,pr,by:me,done:false,doneBy:null};await refresh([w,...(items||[])]);notifyPartner(partner,`@${n(me)} добавил(а) желание: «${t.slice(0,40)}»`,"🎁");sTi("");sD("");};
   const fulfill=async id=>{await refresh((items||[]).map(w=>w.id===id?{...w,done:true,doneBy:me}:w));};
   const filtered=sortedWishes.filter(w=>{if(filter==="mine")return n(w.by)===n(me);if(filter==="partner")return n(w.by)!==n(me);if(filter==="done")return w.done;return true;});
   const prl={high:"🔥 Топ-желание",med:"💫 Хочу",low:"🌿 Когда-нибудь"};
@@ -989,7 +1071,7 @@ function TravelSec({pid,me}){const{data:items,setData:sI,loading,refresh}=useSyn
 
 const DEF_P=[{id:1,em:"🌅",t:"Встречать каждый день вместе, даже на расстоянии",done:false,by:null},{id:2,em:"💬",t:"Говорить честно, даже когда это трудно",done:false,by:null},{id:3,em:"🌱",t:"Расти вместе и поддерживать мечты друг друга",done:false,by:null},{id:4,em:"💋",t:"Никогда не забывать, почему мы начали",done:false,by:null},{id:5,em:"🤝",t:"Быть командой — всегда",done:false,by:null}];
 const PROM_EM=["💌","🌹","⭐","🕊️","🌙","💫","🔥","🤍","🌸","✨"];
-function PromisesSec({pid,me}){
+function PromisesSec({pid,me,partner}){
   const{data:items,setData:sI,loading,refresh}=useSync(`prom:${pid}`,DEF_P,5000);
   const displayItems=items&&items.length>0?items:DEF_P;
   const[inp,sIn]=useState("");
@@ -1006,6 +1088,7 @@ function PromisesSec({pid,me}){
     if(!inp.trim())return;
     const updated=[...displayItems,{id:Date.now(),em:selEm,t:inp.trim(),by:me,done:false,doneBy:null}];
     await save(updated);
+    if(partner)notifyPartner(partner,`@${n(me)} добавил(а) обещание`,"💌");
     sIn("");
   };
 
@@ -1155,7 +1238,7 @@ function CapsuleSec({pid,me}){
 }
 
 /* ─── KISS COUNTER ─── */
-function ProfileSec({pid,me,partner,daysT,tgPhotoUrl,theme,applyTheme}){
+function ProfileSec({pid,me,partner,daysT,tgPhotoUrl,theme,applyTheme,appTheme,toggleAppTheme}){
   const c=coll("prof",pid);
   const[data,sData]=useState(null);
   const[editing,sEditing]=useState(false);
@@ -1189,6 +1272,7 @@ function ProfileSec({pid,me,partner,daysT,tgPhotoUrl,theme,applyTheme}){
                 transition:"transform .2s,border .2s",transform:theme===t.id?"scale(1.2)":"scale(1)"}}/>
           ))}
         </div>
+        {toggleAppTheme&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderTop:"1px solid rgba(255,255,255,.05)"}}><span style={{fontSize:13,color:"var(--ink2)"}}>Тема оформления</span><div onClick={toggleAppTheme} style={{width:48,height:26,borderRadius:13,background:appTheme==="dark"?"rgba(193,66,104,.3)":"rgba(255,200,0,.3)",border:"1px solid rgba(255,255,255,.1)",position:"relative",cursor:"pointer",transition:"background .2s"}}><div style={{position:"absolute",top:3,left:appTheme==="dark"?3:23,width:18,height:18,borderRadius:"50%",background:appTheme==="dark"?"#c14268":"#ffcc00",transition:"left .2s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>{appTheme==="dark"?"🌙":"☀️"}</div></div></div>}
         <div className="prof-wrap">
           <div className="prof-avs">
             {tgPhotoUrl?<img className="prof-av" src={tgPhotoUrl} alt={me}/>:<div className="prof-av prof-av-me">{meInitial}</div>}
@@ -1686,7 +1770,7 @@ function Onboarding({onDone}){
 }
 
 /* ─── LANDING ─── */
-const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"achievements",l:"Награды"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"},{id:"capsule",l:"Капсула"}];
+const SECS=[{id:"hero",l:"Главная"},{id:"today",l:"Сегодня"},{id:"profile",l:"Профиль"},{id:"achievements",l:"Награды"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"},{id:"capsule",l:"Капсула"}];
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const online=useOnline();
@@ -1710,6 +1794,9 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const sRefs=useRef({});const st=useRef({scroll:0,cursor:null});const saveT=useRef(0);
   const pid=pair(me,partner);
   const[theme,setTheme]=useState("midnight");
+  const[appTheme,sAppTheme]=useState(()=>localStorage.getItem("duo_theme")||"dark");
+  const toggleAppTheme=()=>{const next=appTheme==="dark"?"light":"dark";sAppTheme(next);document.documentElement.setAttribute("data-theme",next);localStorage.setItem("duo_theme",next);};
+  useEffect(()=>{document.documentElement.setAttribute("data-theme",appTheme);},[appTheme]);
   const applyTheme=id=>{
     setTheme(id);
     const themeMap={midnight:["#c14268","#9a2f4e"],blush:["#e8748a","#c45570"],golden:["#b8924a","#8a6a2e"],ocean:["#4ab8c1","#2e8a94"]};
@@ -1751,7 +1838,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
     el.scrollIntoView({behavior:"smooth"});
     setTimeout(()=>el.classList.remove("swipe-in-left","swipe-in-right"),300);
   },[active]);
-  const SWIPE_ORDER=["hero","profile","achievements","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises","capsule"];
+  const SWIPE_ORDER=["hero","today","profile","achievements","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises","capsule"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv,"right");},
@@ -1760,7 +1847,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
     scrollEl
   );
   const sendReact=async em=>{sReacts(false);const x=35+Math.random()*30,y=25+Math.random()*44;const id=++rid.current;sF(p=>[...p,{id,emoji:em,x:`${x}%`,y:`${y}%`}]);const s=await loadSt(me)||{};await saveSt(me,{...s,reaction:{emoji:em,x,y,ts:Date.now()}});};
-  const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();sMsgs(p=>[...p,{text,from:me,ts,vd,vdur}]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{text,ts,vd,vdur}});};
+  const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();const msg={text,from:me,ts,vd,vdur,reactions:{}};sMsgs(p=>[...p,msg]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{...msg}});if(text&&text!=="🎤 Голосовое")notifyPartner(partner,`@${n(me)}: «${text.slice(0,60)}»`,"💬");};
+  const reactToMsg=async(ts,emoji)=>{const updated=msgs.map(m=>{if(m.ts!==ts)return m;const cur=m.reactions?.[emoji]||0;return{...m,reactions:{...m.reactions,[emoji]:cur>0?0:1}};});sMsgs(updated);await db.set(`chat:${pid}`,updated);};
   const startRec=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mime=["audio/webm","audio/mp4","audio/ogg"].find(t=>MediaRecorder.isTypeSupported(t))||"";const mr=new MediaRecorder(stream,mime?{mimeType:mime}:{});chunks.current=[];mr.ondataavailable=e=>chunks.current.push(e.data);mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,mime?{type:mime}:{});if(blob.size>10){const dur=(Date.now()-recSt.current)/1000;const reader=new FileReader();reader.onloadend=async()=>{await sendMsg("🎤 Голосовое",reader.result.split(",")[1],dur);};reader.readAsDataURL(blob);}sRec(false);};mr.start();mrRef.current=mr;recSt.current=Date.now();sRec(true);setTimeout(()=>{if(mr.state==="recording")mr.stop();},30000);}catch(e){}};
   const stopRec=()=>{if(mrRef.current?.state==="recording")mrRef.current.stop();};
   const startKiss=async()=>{playSound("kiss");sMK(true);const ts=Date.now();await flush({kissing:true,kissTs:ts});if(ptKiss)sKS(ts);};
@@ -1785,9 +1873,10 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
 
       {/* HERO */}
       <section id="hero" ref={el=>sRefs.current.hero=el}><HeroSec me={me} partner={partner} connectedAt={connectedAt} pid={pid} tgPhotoUrl={tgPhotoUrl}/></section>
-
       <div className="hr"/>
-      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl} theme={theme} applyTheme={applyTheme}/></section>
+      <section id="today" ref={el=>sRefs.current.today=el}><TodaySec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
+      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl} theme={theme} applyTheme={applyTheme} appTheme={appTheme} toggleAppTheme={toggleAppTheme}/></section>
       <div className="hr"/>
       <section id="achievements" ref={el=>sRefs.current.achievements=el}><AchievementsSec pid={pid} me={me} partner={partner} connectedAt={connectedAt}/></section>
       <div className="hr"/>
@@ -1804,7 +1893,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="hr"/>
       <section ref={el=>sRefs.current.calendar=el}><CalSec pid={pid} me={me}/></section>
       <div className="hr"/>
-      <section ref={el=>sRefs.current.moments=el}><MomSec pid={pid} me={me}/></section>
+      <section ref={el=>sRefs.current.moments=el}><MomSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
       <section ref={el=>sRefs.current.dreams=el}><DreamsSec me={me} partner={partner}/></section>
       <div className="hr"/>
@@ -1814,7 +1903,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="hr"/>
       <section id="map" ref={el=>sRefs.current.map=el}><MapSec pid={pid} me={me}/></section>
       <div className="hr"/>
-      <section ref={el=>sRefs.current.promises=el}><PromisesSec pid={pid} me={me}/></section>
+      <section ref={el=>sRefs.current.promises=el}><PromisesSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
       <section id="capsule" ref={el=>sRefs.current.capsule=el}><CapsuleSec pid={pid} me={me}/></section>
 
@@ -1844,10 +1933,10 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {vibeR&&<VibeRipple key={vibeR.ts} vid={vibeR.id} partner={partner} onDone={()=>sVR(null)}/>}
       {surp&&surpriseMsg&&<div className="surp-bg" onClick={()=>sSurp(false)}><div className="surp" onClick={e=>e.stopPropagation()}><div className="surp-shimmer"/><span className="surp-em">🌹</span><div className="surp-t">Для тебя</div><div className="surp-msg">"{surpriseMsg}"</div><div className="surp-from">— с любовью, @{n(me)} 💕</div><button className="surp-btn" onClick={()=>sSurp(false)}>Обнять в ответ 🤗</button></div></div>}
 
-      {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={m.ts||i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}</div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
+      {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={m.ts||i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}<div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap"}}>{["❤️","😂","🥺","🔥"].map(r=>(<span key={r} onClick={()=>reactToMsg(m.ts,r)} style={{fontSize:12,cursor:"pointer",padding:"1px 5px",borderRadius:999,background:m.reactions?.[r]?"rgba(193,66,104,.2)":"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.06)"}}>{r}{m.reactions?.[r]?` ${m.reactions[r]}`:""}</span>))}</div></div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots" onTouchStart={e=>e.stopPropagation()} onTouchMove={e=>e.stopPropagation()}>{["hero","profile","achievements","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises","capsule"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots" onTouchStart={e=>e.stopPropagation()} onTouchMove={e=>e.stopPropagation()}>{["hero","today","profile","achievements","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises","capsule"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div className="rib-ava">{n(partner)[0]||"?"}</div>
         {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
