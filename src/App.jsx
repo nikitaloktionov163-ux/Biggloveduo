@@ -1973,24 +1973,25 @@ class ErrBound extends React.Component {
 export default function App(){
   const[showOb,sShowOb]=useState(()=>!localStorage.getItem("duo_ob_done"));
   const doneOb=()=>{localStorage.setItem("duo_ob_done","1");sShowOb(false);};
-  const[phase,sPhase]=useState("connect");
-  const[me,sMe]=useState("");const[partner,sPt]=useState("");
+  const[phase,sPhase]=useState(()=>{const s=localStorage.getItem("duo_session");if(s){try{const d=JSON.parse(s);if(d.me&&d.partner&&d.ca)return"landing";}catch(e){}}return"connect";});
+  const[me,sMe]=useState(()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s).me||"":"";}catch{return"";}});
+  const[partner,sPt]=useState(()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s).partner||"":"";}catch{return"";}});
   const{ok,username,startParam,photoUrl,share}=useTG();
   const[meI,sMeI]=useState("");
   const[ptI,sPtI]=useState("");
   const[surpI,sSurpI]=useState("");
-  const[err,sErr]=useState("");const[ca,sCA]=useState(null);const[copied,sCopied]=useState(false);
+  const[err,sErr]=useState("");const[ca,sCA]=useState(()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s).ca||null:null;}catch{return null;}});const[copied,sCopied]=useState(false);
   const poll=useRef(null);const burst=useRef(null);
 
   useEffect(()=>{const s=document.createElement("style");s.textContent=CSS;document.head.appendChild(s);return()=>document.head.removeChild(s);},[]);
   useEffect(()=>{if(username)sMeI(username);},[username]);
   useEffect(()=>{if(startParam&&!ptI)sPtI(startParam);},[startParam]);
 
-  const startPoll=useCallback((myN,ptN)=>{poll.current=setInterval(async()=>{const d=await loadP(ptN);if(d&&d.wants===n(myN)){clearInterval(poll.current);sMe(myN);sPt(ptN);sPhase("burst");burst.current=setTimeout(()=>{sCA(Date.now());sPhase("landing");},3000);}},1500);},[]);
+  const startPoll=useCallback((myN,ptN)=>{let attempts=0;poll.current=setInterval(async()=>{attempts++;const d=await loadP(ptN);if(d&&d.wants===n(myN)){clearInterval(poll.current);sMe(myN);sPt(ptN);const connAt=Date.now();sCA(connAt);localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));sPhase("burst");burst.current=setTimeout(()=>sPhase("landing"),3000);}if(attempts===80)sErr("Партнёр ещё не открыл приложение. Отправь ему ссылку 💕");},1500);},[]);
   useEffect(()=>()=>{clearInterval(poll.current);clearTimeout(burst.current);if(me)clearU(me);amb.stop();},[me]);
 
-  const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");await saveP(myN,ptN);sPhase("waiting");startPoll(myN,ptN);};
-  const disconnect=async()=>{clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(username||meI||"");sPtI("");sSurpI("");};
+  const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();console.log("Connecting:",myN,"→",ptN,"pair:",pair(myN,ptN));if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");console.log("Saving presence...");await saveP(myN,ptN);console.log("Saved. Starting poll...");sPhase("waiting");startPoll(myN,ptN);};
+  const disconnect=async()=>{localStorage.removeItem("duo_session");clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(username||meI||"");sPtI("");sSurpI("");};
 
   if(showOb)return <Onboarding onDone={doneOb}/>;
   if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
@@ -2017,7 +2018,7 @@ export default function App(){
             <div className="sep"><span>✦</span></div>
             <div className="field">
               <label className="label">Твой ник</label>
-              <div className="iw"><span className="iat">@</span><input className="inp" placeholder="username" value={meI} onChange={e=>{sMeI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()} readOnly={ok&&!!username}/></div>
+              <div className="iw"><span className="iat">@</span><input className="inp" placeholder="username" value={meI} onChange={e=>{sMeI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()} readOnly={!!username}/></div>
               {ok&&username&&<p className="hint">✓ Получено из Telegram</p>}
             </div>
             <div className="field">
@@ -2035,7 +2036,9 @@ export default function App(){
               onClick={()=>{
                 const myN=(meI.trim()||"test_me");
                 const ptN="partner_test";
-                sMe(myN);sPt(ptN);sCA(Date.now());sPhase("landing");
+                const connAt=Date.now();
+                localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
+                sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
               }}>
               🧪 Войти без партнёра (тест)
             </button>
