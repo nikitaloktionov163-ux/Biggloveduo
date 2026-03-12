@@ -591,13 +591,12 @@ function LoveTimer({start}){const[d,sd]=useState({});useEffect(()=>{const calc=(
 const b64Blob=(b64,t)=>{const bin=atob(b64);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:t});};
 function VoicePlayer({data,dur}){const[p,sp]=useState(false);const ar=useRef(null);useEffect(()=>{if(!data)return;const url=URL.createObjectURL(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))]));const a=new Audio(url);a.onended=()=>sp(false);ar.current=a;return()=>{a.pause();URL.revokeObjectURL(url);};},[data]);const toggle=()=>{const a=ar.current;if(!a)return;if(p){a.pause();a.currentTime=0;sp(false);}else{a.play();sp(true);}};const bars=Array.from({length:14},()=>Math.max(4,Math.sin(Math.random()*3)*9+Math.random()*5+4));return <div className="vp"><button className="vp-btn" onClick={toggle}>{p?<svg width="8" height="8"><rect x="1" y="1" width="2.5" height="6" rx="1" fill="white"/><rect x="4.5" y="1" width="2.5" height="6" rx="1" fill="white"/></svg>:<svg width="8" height="8"><path d="M1.5 1l5.5 3-5.5 3V1z" fill="white"/></svg>}</button><div className="vp-bars">{bars.map((h,i)=><div key={i} className="vp-bar" style={{height:p?`${h}px`:"3px"}}/>)}</div><span className="vp-dur">0:{String(Math.round(dur||0)).padStart(2,"0")}</span></div>;}
 function daysUntil(ds){const now=new Date();now.setHours(0,0,0,0);const d=new Date(ds);const nx=new Date(now.getFullYear(),d.getMonth(),d.getDate());if(nx<now)nx.setFullYear(now.getFullYear()+1);return Math.round((nx-now)/86400000);}
-function useSwipe(onLeft,onRight,threshold=72,targetRef=null){
+function useSwipe(onLeft,onRight,threshold=72,el=null){
   const st=useRef(null);
   const handlers=useRef({onLeft,onRight});
   handlers.current={onLeft,onRight};
 
   useEffect(()=>{
-    const el=targetRef?.current;
     if(!el)return;
 
     const onStart=e=>{
@@ -637,7 +636,7 @@ function useSwipe(onLeft,onRight,threshold=72,targetRef=null){
       el.removeEventListener("touchmove",onMove);
       el.removeEventListener("touchend",onEnd);
     };
-  },[targetRef?.current]);
+  },[el]);
 
   return {};
 }
@@ -1402,7 +1401,10 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[vibe,sVibe]=useState(false);const[vibeR,sVR]=useState(null);const lastVT=useRef(0);
   const[music,sMusic]=useState(false);
   const[surp,sSurp]=useState(false);const sFired=useRef(false);
-  const scroll=useRef(null);const sRefs=useRef({});const st=useRef({scroll:0,cursor:null});const saveT=useRef(0);
+  const scroll=useRef(null);
+  const[scrollEl,sScrollEl]=useState(null);
+  const scrollCb=useCallback(el=>{scroll.current=el;sScrollEl(el);},[]);
+  const sRefs=useRef({});const st=useRef({scroll:0,cursor:null});const saveT=useRef(0);
   const pid=pair(me,partner);
   const[theme,setTheme]=useState("midnight");
   const applyTheme=id=>{
@@ -1444,7 +1446,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
     ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv);},
     ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
     72,
-    scroll
+    scrollEl
   );
   const sendReact=async em=>{sReacts(false);const x=35+Math.random()*30,y=25+Math.random()*44;const id=++rid.current;sF(p=>[...p,{id,emoji:em,x:`${x}%`,y:`${y}%`}]);const s=await loadSt(me)||{};await saveSt(me,{...s,reaction:{emoji:em,x,y,ts:Date.now()}});};
   const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();sMsgs(p=>[...p,{text,from:me,ts,vd,vdur}]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{text,ts,vd,vdur}});};
@@ -1461,7 +1463,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const milestones=[{n:7,l:"7 дней"},{n:30,l:"1 месяц"},{n:100,l:"100 дней"},{n:180,l:"полгода"},{n:365,l:"1 год"},{n:730,l:"2 года"},{n:1000,l:"1000 дней"},{n:1825,l:"5 лет"}];
 
   return(
-    <div ref={scroll} className="app">
+    <div ref={scrollCb} className="app">
       {!online&&<div className="offline-bar">⚠️ Нет соединения — данные могут не синхронизироваться</div>}
       <Timer t0={connectedAt}/>
       <nav className={`nav ${stuck?"stuck":""}`}>
