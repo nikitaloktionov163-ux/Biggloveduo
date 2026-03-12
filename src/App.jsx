@@ -25,6 +25,45 @@ const saveP=(me,to)=>db.set(`p:${n(me)}`,{wants:n(to),ts:Date.now()});
 const loadP=async u=>{const d=await db.get(`p:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 const clearU=me=>["p","st"].forEach(k=>db.del(`${k}:${n(me)}`));
 const saveSt=(me,d)=>db.set(`st:${n(me)}`,{...d,ts:Date.now()});
+
+// Realtime channel (polling fallback)
+let realtimeChannel=null;
+const subscribeToKey=(key,callback)=>{
+  const url=`${SB_URL}/realtime/v1/websocket?apikey=${SB_KEY}&vsn=1.0.0`;
+  return null;
+};
+
+function useSync(key,initialVal,interval=5000){
+  const[data,setData]=useState(initialVal);
+  const[loading,setLoading]=useState(true);
+  const timer=useRef(null);
+  const visible=useRef(true);
+  useEffect(()=>{
+    const onVis=()=>{visible.current=document.visibilityState==="visible";};
+    document.addEventListener("visibilitychange",onVis);
+    const poll=async()=>{
+      if(!visible.current)return;
+      try{const r=await db.get(key);if(r!==null)setData(r);}catch(e){}
+      finally{setLoading(false);}
+    };
+    poll();
+    timer.current=setInterval(poll,interval);
+    return()=>{clearInterval(timer.current);document.removeEventListener("visibilitychange",onVis);};
+  },[key,interval]);
+  const refresh=useCallback(async(newVal)=>{setData(newVal);await db.set(key,newVal);},[key]);
+  return{data,setData,loading,refresh};
+}
+function useOnline(){
+  const[online,sO]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
+  useEffect(()=>{
+    const on=()=>sO(true);
+    const off=()=>sO(false);
+    window.addEventListener("online",on);
+    window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
+  return online;
+}
 const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 
 /* ─── AMBIENT ─── */
@@ -292,6 +331,25 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 /* cards */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:18px;text-align:left;}
 .card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:14px 15px;transition:border-color .25s,transform .2s var(--e1),background .2s;animation:up .3s var(--e1) both;}
+/* Skeleton */
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skel{border-radius:8px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.6s infinite;}
+.skel-text{height:14px;margin-bottom:8px;border-radius:4px;}
+.skel-card{height:80px;border-radius:16px;margin-bottom:10px;}
+.skel-circle{width:48px;height:48px;border-radius:50%;}
+/* Onboarding */
+.ob{position:fixed;inset:0;z-index:2000;background:var(--c0);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;}
+.ob-steps{display:flex;gap:6px;margin-bottom:40px;}
+.ob-step{width:24px;height:3px;border-radius:2px;background:rgba(255,255,255,.12);transition:background .3s;}
+.ob-step.on{background:var(--r);width:32px;}
+.ob-icon{font-size:64px;margin-bottom:24px;filter:drop-shadow(0 0 24px rgba(193,66,104,.4));animation:hb 2.4s ease-in-out infinite;}
+.ob-title{font-family:var(--d);font-size:clamp(24px,6vw,32px);font-weight:700;text-align:center;line-height:1.2;margin-bottom:12px;}
+.ob-title em{font-style:italic;font-weight:400;color:rgba(193,66,104,.85);}
+.ob-desc{font-size:14px;font-weight:300;color:var(--ink3);text-align:center;line-height:1.7;max-width:280px;margin-bottom:40px;}
+.ob-nav{display:flex;gap:12px;width:100%;}
+.ob-skip{flex:1;padding:13px;border-radius:12px;background:transparent;border:1px solid rgba(255,255,255,.1);color:var(--ink3);font-family:var(--b);font-size:14px;cursor:pointer;}
+.ob-next{flex:2;padding:13px;border-radius:12px;background:linear-gradient(135deg,var(--r),var(--r2));color:#fff;font-family:var(--b);font-size:14px;font-weight:600;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(193,66,104,.28);}
+.offline-bar{position:fixed;top:0;left:0;right:0;z-index:9999;background:#2d1a1a;border-bottom:1px solid rgba(240,101,101,.3);padding:8px 16px;text-align:center;font-size:12px;color:#f06565;font-weight:500;}
 .card:hover{border-color:rgba(193,66,104,.22);background:rgba(255,255,255,.04);transform:translateY(-2px);}
 .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
 .card-em{font-size:18px;}
@@ -561,68 +619,56 @@ const getTodayQuote=()=>QUOTES[Math.floor(Date.now()/86400000)%QUOTES.length];
 function QuoteCard(){const q=getTodayQuote();return(<div className="quote-card"><div className="quote-mark">"</div><div className="quote-text">{q.text}</div>{q.author&&<div className="quote-author">— {q.author}</div>}</div>);}
 
 /* ─── SECTIONS ─── */
+function SkeletonCards({count=3,height=80}){
+  return <>{Array.from({length:count},(_,i)=>(<div key={i} className="skel" style={{height,borderRadius:16,marginBottom:10,opacity:1-i*0.2}}/>))}</>;
+}
 const CAL_EM=["💍","🌹","🎂","✈️","🏠","💑","🎁","⭐","🥂","🌙","🎭","🌺"];
-function CalSec({pid,me}){const c=coll("cal",pid);const[evs,sE]=useState([]);const[t,sT]=useState("");const[dt,sDt]=useState("");const[ds,sDs]=useState("");const[em,sEm]=useState("💍");useEffect(()=>{c.load().then(sE);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sE),7000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!t.trim()||!dt)return;const ev={id:Date.now(),t:t.trim(),dt,ds:ds.trim(),em,by:me};const u=[...evs,ev].sort((a,b)=>daysUntil(a.dt)-daysUntil(b.dt));sE(u);await c.save(u);sT("");sDt("");sDs("");};const chip=d=>d===0?["today","🎉 Сегодня"]:d<=7?["soon",`через ${d} дн.`]:d<=30?["near",`через ${d} дн.`]:["far",`через ${d} дн.`];return(<div className="sec" id="calendar"><div className="sec-in"><span className="brow">Важные даты</span><h2 className="sh">Наш <em>календарь</em></h2><p className="sp">Годовщины, путешествия, особые события — всё вместе.</p><div className="grid">{evs.length===0&&<div className="empty">Добавьте первую важную дату 💍</div>}{evs.map(ev=><div key={ev.id} className="card"><div className="card-top"><span className="card-em">{ev.em}</span><span className="card-meta" style={{color:"var(--g)"}}>{new Date(ev.dt).toLocaleDateString("ru-RU",{day:"numeric",month:"short"})}</span></div><div className="card-t">{ev.t}</div>{ev.ds&&<div className="card-d">{ev.ds}</div>}{(()=>{const[cls,lbl]=chip(daysUntil(ev.dt));return <span className={`card-chip chip-${cls}`}>{lbl}</span>;})()}</div>)}</div><div className="form"><div className="ep">{CAL_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sEm(e)}>{e}</span>)}</div><div className="row"><input className="fi" placeholder="Название" value={t} onChange={e=>sT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><input className="fi fi-date" type="date" value={dt} onChange={e=>sDt(e.target.value)} style={{width:136,flexShrink:0}}/></div><div className="row"><input className="fi" placeholder="Описание" value={ds} onChange={e=>sDs(e.target.value)}/><button className="fa" disabled={!t.trim()||!dt} onClick={add}>Добавить</button></div></div></div></div>);}
+function CalSec({pid,me}){const{data:evs,setData:sE,loading,refresh}=useSync(`cal:${pid}`,[],7000);const[t,sT]=useState("");const[dt,sDt]=useState("");const[ds,sDs]=useState("");const[em,sEm]=useState("💍");const add=async()=>{if(!t.trim()||!dt)return;const ev={id:Date.now(),t:t.trim(),dt,ds:ds.trim(),em,by:me};const u=[...evs,ev].sort((a,b)=>daysUntil(a.dt)-daysUntil(b.dt));await refresh(u);sT("");sDt("");sDs("");};const chip=d=>d===0?["today","🎉 Сегодня"]:d<=7?["soon",`через ${d} дн.`]:d<=30?["near",`через ${d} дн.`]:["far",`через ${d} дн.`];if(loading)return(<div className="sec" id="calendar"><div className="sec-in"><span className="brow">Важные даты</span><h2 className="sh">Наш <em>календарь</em></h2><p className="sp">Годовщины, путешествия, особые события — всё вместе.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="calendar"><div className="sec-in"><span className="brow">Важные даты</span><h2 className="sh">Наш <em>календарь</em></h2><p className="sp">Годовщины, путешествия, особые события — всё вместе.</p><div className="grid">{evs.length===0&&<div className="empty">Добавьте первую важную дату 💍</div>}{evs.map(ev=><div key={ev.id} className="card"><div className="card-top"><span className="card-em">{ev.em}</span><span className="card-meta" style={{color:"var(--g)"}}>{new Date(ev.dt).toLocaleDateString("ru-RU",{day:"numeric",month:"short"})}</span></div><div className="card-t">{ev.t}</div>{ev.ds&&<div className="card-d">{ev.ds}</div>}{(()=>{const[cls,lbl]=chip(daysUntil(ev.dt));return <span className={`card-chip chip-${cls}`}>{lbl}</span>;})()}</div>)}</div><div className="form"><div className="ep">{CAL_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sEm(e)}>{e}</span>)}</div><div className="row"><input className="fi" placeholder="Название" value={t} onChange={e=>sT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><input className="fi fi-date" type="date" value={dt} onChange={e=>sDt(e.target.value)} style={{width:136,flexShrink:0}}/></div><div className="row"><input className="fi" placeholder="Описание" value={ds} onChange={e=>sDs(e.target.value)}/><button className="fa" disabled={!t.trim()||!dt} onClick={add}>Добавить</button></div></div></div></div>);}
 
 const MOM_EM=["🌹","💕","✨","😍","🥰","💋","🫶","🌙","☕","🎵","🌊","🏔️","💌","🎉","🌸","🤍"];
 const TAGS=[{id:"happy",l:"Счастье"},{id:"tender",l:"Нежность"},{id:"funny",l:"Смешно"},{id:"important",l:"Важно"}];
 function MemoryOverlay({item,onClose,onAnother}){if(!item)return null;const tagLbl=TAGS.find(t=>t.id===item.tag)?.l||"Важно";return(<div className="mem-overlay" onClick={onClose}><div className="mem-card" onClick={e=>e.stopPropagation()}><div className="mem-em">{item.em}</div><div className="mem-tag-chip">{tagLbl}</div><div className="mem-text">{item.txt}</div>{item.by&&<div className="mem-by">@{n(item.by)}</div>}{item.ts&&<div className="mem-date">{new Date(item.ts).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"})}</div>}<button className="mem-close" onClick={onClose}>✕</button><button className="mem-another" onClick={onAnother}>Ещё одно 💫</button></div></div>);}
-function MomSec({pid,me}){const c=coll("mom",pid);const[items,sI]=useState([]);const[surprise,sSurprise]=useState(null);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");useEffect(()=>{c.load().then(sI);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sI),5000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};const u=[m,...items];sI(u);await c.save(u);sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});const showAnother=()=>{if(items.length<2)return;let idx;do{idx=Math.floor(Math.random()*items.length);}while(items[idx].id===surprise?.id);sSurprise(items[idx]);};return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>{items.length>0&&<div style={{textAlign:"center",marginBottom:20}}><button className="surprise-btn" onClick={()=>sSurprise(items[Math.floor(Math.random()*items.length)])}>💫 Удиви меня</button></div>}<div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div>{surprise&&<MemoryOverlay item={surprise} onClose={()=>sSurprise(null)} onAnother={showAnother}/>}</div></div>);}
+function MomSec({pid,me}){const{data:items,setData:sI,loading,refresh}=useSync(`mom:${pid}`,[],5000);const[surprise,sSurprise]=useState(null);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};await refresh([m,...items]);sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});const showAnother=()=>{if(items.length<2)return;let idx;do{idx=Math.floor(Math.random()*items.length);}while(items[idx].id===surprise?.id);sSurprise(items[idx]);};if(loading)return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>{items.length>0&&<div style={{textAlign:"center",marginBottom:20}}><button className="surprise-btn" onClick={()=>sSurprise(items[Math.floor(Math.random()*items.length)])}>💫 Удиви меня</button></div>}<div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div>{surprise&&<MemoryOverlay item={surprise} onClose={()=>sSurprise(null)} onAnother={showAnother}/>}</div></div>);}
 
-function DreamsSec({me,partner}){const myC=coll("drm",n(me));const ptC=coll("drm",n(partner));const[my,sMy]=useState([]);const[pt,sPt]=useState([]);const[inp,sI]=useState("");useEffect(()=>{myC.load().then(sMy);ptC.load().then(sPt);},[]);useEffect(()=>{const iv=setInterval(()=>{myC.load().then(sMy);ptC.load().then(sPt);},7000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!inp.trim())return;const u=[...my,{id:Date.now(),t:inp.trim(),done:false}];sMy(u);await myC.save(u);sI("");};const toggle=async id=>{const u=my.map(d=>d.id===id?{...d,done:!d.done}:d);sMy(u);await myC.save(u);};const Col=({title,em,items,isMe})=><div className="dcol"><div className="dcol-h"><span>{em}</span>{title}</div>{items.length===0&&<p className="empty" style={{padding:"8px 0",gridColumn:"auto"}}>{isMe?"Добавь свою первую мечту…":"Мечты пока не добавлены…"}</p>}{items.map(d=><div key={d.id} className="di">{isMe?<div className={`dchk ${d.done?"ok":""}`} onClick={()=>toggle(d.id)}>{d.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>  </svg>}</div>:<span style={{fontSize:12,flexShrink:0,marginTop:1}}>{d.done?"✅":"✨"}</span>}<span className={`di-txt ${d.done?"di-done":""}`}>{d.t}</span></div>)}{isMe&&<div className="dadd"><input className="fi" placeholder="Добавить мечту…" value={inp} onChange={e=>sI(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!inp.trim()} onClick={add} style={{padding:"9px 13px"}}>+</button></div>}</div>;return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div className="dcols"><Col title={`@${n(me)}`} em="🌟" items={my} isMe={true}/><Col title={`@${n(partner)}`} em="💫" items={pt} isMe={false}/></div></div></div>);}
+function DreamsSec({me,partner}){const{data:my,setData:sMy,loading:loadMy,refresh:refreshMy}=useSync(`drm:${n(me)}`,[],7000);const{data:pt,setData:sPt,loading:loadPt}=useSync(`drm:${n(partner)}`,[],7000);const[inp,sI]=useState("");const add=async()=>{if(!inp.trim())return;await refreshMy([...my,{id:Date.now(),t:inp.trim(),done:false}]);sI("");};const toggle=async id=>{await refreshMy(my.map(d=>d.id===id?{...d,done:!d.done}:d));};const Col=({title,em,items,isMe})=><div className="dcol"><div className="dcol-h"><span>{em}</span>{title}</div>{items.length===0&&<p className="empty" style={{padding:"8px 0",gridColumn:"auto"}}>{isMe?"Добавь свою первую мечту…":"Мечты пока не добавлены…"}</p>}{items.map(d=><div key={d.id} className="di">{isMe?<div className={`dchk ${d.done?"ok":""}`} onClick={()=>toggle(d.id)}>{d.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>  </svg>}</div>:<span style={{fontSize:12,flexShrink:0,marginTop:1}}>{d.done?"✅":"✨"}</span>}<span className={`di-txt ${d.done?"di-done":""}`}>{d.t}</span></div>)}{isMe&&<div className="dadd"><input className="fi" placeholder="Добавить мечту…" value={inp} onChange={e=>sI(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!inp.trim()} onClick={add} style={{padding:"9px 13px"}}>+</button></div>}</div>;const loading=loadMy||loadPt;if(loading)return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div className="dcols"><Col title={`@${n(me)}`} em="🌟" items={my} isMe={true}/><Col title={`@${n(partner)}`} em="💫" items={pt} isMe={false}/></div></div></div>);}
 
 const WISH_EM=["🎁","💍","👗","📚","🎵","🍕","💄","📷","🎮","🌸","💅","🎭","🍷","✈️","🛍️","🎀"];
-function WishesSec({pid,me,partner}){const c=coll("wish",pid);const[items,sI]=useState([]);const[tab,sT]=useState("all");const[t,sTi]=useState("");const[d,sD]=useState("");const[em,sE]=useState("🎁");const[pr,sPr]=useState("med");useEffect(()=>{c.load().then(sI);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sI),7000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!t.trim())return;const w={id:Date.now(),t:t.trim(),d:d.trim(),em,pr,by:me,done:false,doneBy:null};const u=[w,...items];sI(u);await c.save(u);sTi("");sD("");};const fulfill=async id=>{const u=items.map(w=>w.id===id?{...w,done:true,doneBy:me}:w);sI(u);await c.save(u);};const fl=tab==="all"?items:tab==="mine"?items.filter(w=>n(w.by)===n(me)):items.filter(w=>n(w.by)===n(partner));const prl={high:"🔥 Топ-желание",med:"💫 Хочу",low:"🌿 Когда-нибудь"};return(<div className="sec" id="wishes" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Список желаний</span><h2 className="sh">Что мы <em>хотим</em></h2><p className="sp">Желания каждого. Исполни желание любимого — нажми кнопку.</p><div className="wtabs">{[["all","Все"],["mine","Мои"],["theirs","Партнёра"]].map(([v,l])=><div key={v} className={`wtab ${tab===v?"on":""}`} onClick={()=>sT(v)}>{l}</div>)}</div><div className="grid">{fl.length===0&&<div className="empty">Добавь первое желание 🎁</div>}{fl.map(w=><div key={w.id} className={`card ${w.done?"":""}`} style={w.done?{opacity:.45,filter:"grayscale(.5)"}:{}}><div className="card-top"><span style={{fontSize:18}}>{w.em}</span><span className="card-meta" style={{color:"rgba(193,66,104,.55)"}}>{n(w.by)}</span></div><div className="card-t">{w.t}</div>{w.d&&<div className="card-d">{w.d}</div>}<span className={`card-chip chip-${w.pr}`}>{prl[w.pr]}</span>{!w.done&&n(w.by)!==n(me)&&<button className="wcard-fulfill" onClick={()=>fulfill(w.id)}>✨ Исполнить</button>}{w.done&&<div className="wcard-done">✅ @{n(w.doneBy)} исполнил</div>}</div>)}</div><div className="form"><div className="ep">{WISH_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{[["high","🔥 Очень хочу"],["med","💫 Хочу"],["low","🌿 Когда-нибудь"]].map(([v,l])=><div key={v} className={`copt chip-${v} ${pr===v?"s":""}`} onClick={()=>sPr(v)}>{l}</div>)}</div><div className="row"><input className="fi" placeholder="Моё желание…" value={t} onChange={e=>sTi(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!t.trim()} onClick={add}>Добавить</button></div><input className="fi" placeholder="Описание (необязательно)" value={d} onChange={e=>sD(e.target.value)}/></div></div></div>);}
+function WishesSec({pid,me,partner}){const{data:items,setData:sI,loading,refresh}=useSync(`wish:${pid}`,[],7000);const[tab,sT]=useState("all");const[t,sTi]=useState("");const[d,sD]=useState("");const[em,sE]=useState("🎁");const[pr,sPr]=useState("med");const add=async()=>{if(!t.trim())return;const w={id:Date.now(),t:t.trim(),d:d.trim(),em,pr,by:me,done:false,doneBy:null};await refresh([w,...items]);sTi("");sD("");};const fulfill=async id=>{await refresh(items.map(w=>w.id===id?{...w,done:true,doneBy:me}:w));};const fl=tab==="all"?items:tab==="mine"?items.filter(w=>n(w.by)===n(me)):items.filter(w=>n(w.by)===n(partner));const prl={high:"🔥 Топ-желание",med:"💫 Хочу",low:"🌿 Когда-нибудь"};if(loading)return(<div className="sec" id="wishes" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Список желаний</span><h2 className="sh">Что мы <em>хотим</em></h2><p className="sp">Желания каждого. Исполни желание любимого — нажми кнопку.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="wishes" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Список желаний</span><h2 className="sh">Что мы <em>хотим</em></h2><p className="sp">Желания каждого. Исполни желание любимого — нажми кнопку.</p><div className="wtabs">{[["all","Все"],["mine","Мои"],["theirs","Партнёра"]].map(([v,l])=><div key={v} className={`wtab ${tab===v?"on":""}`} onClick={()=>sT(v)}>{l}</div>)}</div><div className="grid">{fl.length===0&&<div className="empty">Добавь первое желание 🎁</div>}{fl.map(w=><div key={w.id} className={`card ${w.done?"":""}`} style={w.done?{opacity:.45,filter:"grayscale(.5)"}:{}}><div className="card-top"><span style={{fontSize:18}}>{w.em}</span><span className="card-meta" style={{color:"rgba(193,66,104,.55)"}}>{n(w.by)}</span></div><div className="card-t">{w.t}</div>{w.d&&<div className="card-d">{w.d}</div>}<span className={`card-chip chip-${w.pr}`}>{prl[w.pr]}</span>{!w.done&&n(w.by)!==n(me)&&<button className="wcard-fulfill" onClick={()=>fulfill(w.id)}>✨ Исполнить</button>}{w.done&&<div className="wcard-done">✅ @{n(w.doneBy)} исполнил</div>}</div>)}</div><div className="form"><div className="ep">{WISH_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{[["high","🔥 Очень хочу"],["med","💫 Хочу"],["low","🌿 Когда-нибудь"]].map(([v,l])=><div key={v} className={`copt chip-${v} ${pr===v?"s":""}`} onClick={()=>sPr(v)}>{l}</div>)}</div><div className="row"><input className="fi" placeholder="Моё желание…" value={t} onChange={e=>sTi(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!t.trim()} onClick={add}>Добавить</button></div><input className="fi" placeholder="Описание (необязательно)" value={d} onChange={e=>sD(e.target.value)}/></div></div></div>);}
 
 const FLAGS=["🇯🇵","🇮🇹","🇫🇷","🇪🇸","🇬🇷","🇹🇭","🇵🇹","🇲🇽","🇮🇸","🇳🇴","🇨🇭","🇦🇹","🇨🇿","🇹🇷","🇧🇦","🌍"];
 const SLBL={dream:"Мечта",planning:"Планируем",been:"Были ✓"};
-function TravelSec({pid,me}){const c=coll("trv",pid);const[items,sI]=useState([]);const[pl,sP]=useState("");const[nt,sN]=useState("");const[fl,sF]=useState("🇯🇵");const[st,sSt]=useState("dream");useEffect(()=>{c.load().then(sI);},[]);useEffect(()=>{const iv=setInterval(()=>c.load().then(sI),7000);return()=>clearInterval(iv);},[]);const add=async()=>{if(!pl.trim())return;const p={id:Date.now(),pl:pl.trim(),nt:nt.trim(),fl,st,by:me};const u=[...items,p];sI(u);await c.save(u);sP("");sN("");};const cycle=async id=>{const order=["dream","planning","been"];const u=items.map(p=>p.id!==id?p:{...p,st:order[(order.indexOf(p.st)+1)%order.length]});sI(u);await c.save(u);};const counts={dream:items.filter(x=>x.st==="dream").length,planning:items.filter(x=>x.st==="planning").length,been:items.filter(x=>x.st==="been").length};return(<div className="sec" id="travel"><div className="sec-in"><span className="brow">Путешествия</span><h2 className="sh">Куда мы <em>хотим поехать</em></h2><p className="sp">Нажми на карточку — изменить статус. Мечта → Планируем → Были ✓</p>{items.length>0&&<div className="tcounts">{[["dream","Мечты"],["planning","Планируем"],["been","Были"]].map(([k,l])=><div key={k} className="tcount"><div className={`tc-n ${k}`}>{counts[k]}</div><div className="tc-l">{l}</div></div>)}</div>}<div className="grid">{items.length===0&&<div className="empty">Добавьте первое место мечты ✈️</div>}{items.map(p=><div key={p.id} className="card" style={{cursor:"pointer"}} onClick={()=>cycle(p.id)}><span className={`card-chip chip-${p.st}`} style={{display:"inline-block",marginBottom:8}}>{SLBL[p.st]}</span><div style={{fontSize:24,display:"block",marginBottom:5}}>{p.fl}</div><div className="card-t">{p.pl}</div>{p.nt&&<div className="card-d">{p.nt}</div>}<div style={{fontSize:9,color:"rgba(193,66,104,.4)",marginTop:7,fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>{n(p.by)}</div><div className="travel-hint">Нажми — сменить статус</div></div>)}</div><div className="form"><div className="ep">{FLAGS.map(f=><span key={f} className={`eo ${fl===f?"s":""}`} onClick={()=>sF(f)}>{f}</span>)}</div><div className="cp">{Object.entries(SLBL).map(([v,l])=><div key={v} className={`copt chip-${v} ${st===v?"s":""}`} onClick={()=>sSt(v)}>{l}</div>)}</div><div className="row"><input className="fi" placeholder="Название места" value={pl} onChange={e=>sP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!pl.trim()} onClick={add}>Добавить</button></div><input className="fi" placeholder="Заметка" value={nt} onChange={e=>sN(e.target.value)}/></div></div></div>);}
+function TravelSec({pid,me}){const{data:items,setData:sI,loading,refresh}=useSync(`trv:${pid}`,[],7000);const[pl,sP]=useState("");const[nt,sN]=useState("");const[fl,sF]=useState("🇯🇵");const[st,sSt]=useState("dream");const add=async()=>{if(!pl.trim())return;const p={id:Date.now(),pl:pl.trim(),nt:nt.trim(),fl,st,by:me};await refresh([...items,p]);sP("");sN("");};const cycle=async id=>{const order=["dream","planning","been"];await refresh(items.map(p=>p.id!==id?p:{...p,st:order[(order.indexOf(p.st)+1)%order.length]}));};const counts={dream:items.filter(x=>x.st==="dream").length,planning:items.filter(x=>x.st==="planning").length,been:items.filter(x=>x.st==="been").length};if(loading)return(<div className="sec" id="travel"><div className="sec-in"><span className="brow">Путешествия</span><h2 className="sh">Куда мы <em>хотим поехать</em></h2><p className="sp">Нажми на карточку — изменить статус. Мечта → Планируем → Были ✓</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="travel"><div className="sec-in"><span className="brow">Путешествия</span><h2 className="sh">Куда мы <em>хотим поехать</em></h2><p className="sp">Нажми на карточку — изменить статус. Мечта → Планируем → Были ✓</p>{items.length>0&&<div className="tcounts">{[["dream","Мечты"],["planning","Планируем"],["been","Были"]].map(([k,l])=><div key={k} className="tcount"><div className={`tc-n ${k}`}>{counts[k]}</div><div className="tc-l">{l}</div></div>)}</div>}<div className="grid">{items.length===0&&<div className="empty">Добавьте первое место мечты ✈️</div>}{items.map(p=><div key={p.id} className="card" style={{cursor:"pointer"}} onClick={()=>cycle(p.id)}><span className={`card-chip chip-${p.st}`} style={{display:"inline-block",marginBottom:8}}>{SLBL[p.st]}</span><div style={{fontSize:24,display:"block",marginBottom:5}}>{p.fl}</div><div className="card-t">{p.pl}</div>{p.nt&&<div className="card-d">{p.nt}</div>}<div style={{fontSize:9,color:"rgba(193,66,104,.4)",marginTop:7,fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>{n(p.by)}</div><div className="travel-hint">Нажми — сменить статус</div></div>)}</div><div className="form"><div className="ep">{FLAGS.map(f=><span key={f} className={`eo ${fl===f?"s":""}`} onClick={()=>sF(f)}>{f}</span>)}</div><div className="cp">{Object.entries(SLBL).map(([v,l])=><div key={v} className={`copt chip-${v} ${st===v?"s":""}`} onClick={()=>sSt(v)}>{l}</div>)}</div><div className="row"><input className="fi" placeholder="Название места" value={pl} onChange={e=>sP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!pl.trim()} onClick={add}>Добавить</button></div><input className="fi" placeholder="Заметка" value={nt} onChange={e=>sN(e.target.value)}/></div></div></div>);}
 
 const DEF_P=[{id:1,em:"🌅",t:"Встречать каждый день вместе, даже на расстоянии",done:false,by:null},{id:2,em:"💬",t:"Говорить честно, даже когда это трудно",done:false,by:null},{id:3,em:"🌱",t:"Расти вместе и поддерживать мечты друг друга",done:false,by:null},{id:4,em:"💋",t:"Никогда не забывать, почему мы начали",done:false,by:null},{id:5,em:"🤝",t:"Быть командой — всегда",done:false,by:null}];
 const PROM_EM=["💌","🌹","⭐","🕊️","🌙","💫","🔥","🤍","🌸","✨"];
 function PromisesSec({pid,me}){
-  const c=coll("prom",pid);
-  const[items,sI]=useState(DEF_P);
+  const{data:items,setData:sI,loading,refresh}=useSync(`prom:${pid}`,DEF_P,5000);
+  const displayItems=items&&items.length>0?items:DEF_P;
   const[inp,sIn]=useState("");
   const[selEm,sSelEm]=useState("💌");
-  const[loading,sLoad]=useState(true);
-  const saved=useRef(false);
 
-  useEffect(()=>{
-    c.load().then(data=>{
-      if(data&&data.length>0){sI(data);saved.current=true;}
-      else{/* first load — keep defaults, will save on first interaction */}
-      sLoad(false);
-    });
-  },[]);
-
-  useEffect(()=>{
-    const iv=setInterval(()=>c.load().then(data=>{if(data&&data.length>0)sI(data);}),5000);
-    return()=>clearInterval(iv);
-  },[]);
-
-  const save=async(updated)=>{sI(updated);await c.save(updated);};
+  const save=async(updated)=>{await refresh(updated);};
 
   const toggle=async(id)=>{
-    const updated=items.map(x=>x.id===id?{...x,done:!x.done,doneBy:!x.done?me:null}:x);
+    const updated=displayItems.map(x=>x.id===id?{...x,done:!x.done,doneBy:!x.done?me:null}:x);
     await save(updated);
   };
 
   const add=async()=>{
     if(!inp.trim())return;
-    const updated=[...items,{id:Date.now(),em:selEm,t:inp.trim(),by:me,done:false,doneBy:null}];
+    const updated=[...displayItems,{id:Date.now(),em:selEm,t:inp.trim(),by:me,done:false,doneBy:null}];
     await save(updated);
     sIn("");
   };
 
   const remove=async(id)=>{
-    const updated=items.filter(x=>x.id!==id);
+    const updated=displayItems.filter(x=>x.id!==id);
     await save(updated);
   };
 
-  if(loading)return(<div className="sec" id="promises"><div className="sec-in"><p style={{color:"var(--ink3)",fontSize:12,textAlign:"center"}}>Загрузка…</p></div></div>);
+  if(loading)return(<div className="sec" id="promises"><div className="sec-in"><span className="brow">Обещания</span><h2 className="sh">Слова, <em>которые важны</em></h2><p className="sp">То, что вы обещаете друг другу.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);
 
-  const done=items.filter(x=>x.done).length;
+  const done=displayItems.filter(x=>x.done).length;
 
   return(
     <div className="sec" id="promises" style={{background:"rgba(255,255,255,.01)"}}>
@@ -630,13 +676,13 @@ function PromisesSec({pid,me}){
         <span className="brow">Обещания</span>
         <h2 className="sh">Слова, <em>которые важны</em></h2>
         <p className="sp">То, что вы обещаете друг другу. Синхронизировано для вас обоих.</p>
-        {items.length>0&&<div style={{display:"flex",gap:18,justifyContent:"center",marginBottom:24,flexWrap:"wrap"}}>
-          <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"rgba(193,66,104,.85)"}}>{items.length}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>обещаний</div></div>
+        {displayItems.length>0&&<div style={{display:"flex",gap:18,justifyContent:"center",marginBottom:24,flexWrap:"wrap"}}>
+          <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"rgba(193,66,104,.85)"}}>{displayItems.length}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>обещаний</div></div>
           <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"var(--mint)"}}>{done}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>выполнено</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"rgba(184,146,74,.8)"}}>{items.length-done}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>впереди</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontFamily:"var(--d)",fontSize:32,fontWeight:700,color:"rgba(184,146,74,.8)"}}>{displayItems.length-done}</div><div style={{fontSize:9,textTransform:"uppercase",letterSpacing:".08em",color:"var(--ink3)",marginTop:2}}>впереди</div></div>
         </div>}
         <div className="plist">
-          {items.map(p=>(
+          {displayItems.map(p=>(
             <div key={p.id} className="pi" style={p.done?{opacity:.55}:{}}>
               <span className="pi-em">{p.em}</span>
               <div className="pi-body">
@@ -859,8 +905,8 @@ function MapSec({pid,me}){
     check();
   },[]);
 
-  const c=coll("places",pid);
-  const[places,sPlaces]=useState([]);
+  const{data:placesRaw,setData:sPlaces,loading:placesLoading,refresh}=useSync(`places:${pid}`,[],30000);
+  const places=Array.isArray(placesRaw)?placesRaw:[];
   const[adding,sAdding]=useState(false);
   const[pending,sPending]=useState(null);
   const[name,sName]=useState("");
@@ -869,9 +915,6 @@ function MapSec({pid,me}){
   const mapRef=useRef(null);
   const mapI=useRef(null);
   const mks=useRef({});
-
-  useEffect(()=>{c.load().then(d=>{if(Array.isArray(d))sPlaces(d);});},[]);
-  useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>{if(Array.isArray(d))sPlaces(d);}),30000);return()=>clearInterval(iv);},[]);
 
   // Init Leaflet map (only when ready)
   useEffect(()=>{
@@ -904,14 +947,12 @@ function MapSec({pid,me}){
   const save=async()=>{
     if(!pending||!name.trim())return;
     const pl={id:Date.now(),name:name.trim(),note:note.trim(),lat:pending.lat,lng:pending.lng,em,by:me,ts:Date.now()};
-    const updated=[...places,pl];
-    sPlaces(updated);await c.save(updated);
+    await refresh([...places,pl]);
     sName("");sNote("");sPending(null);sAdding(false);
   };
 
   const remove=async(id)=>{
-    const updated=places.filter(p=>p.id!==id);
-    sPlaces(updated);await c.save(updated);
+    await refresh(places.filter(p=>p.id!==id));
   };
 
   if(!ready)return(
@@ -954,31 +995,27 @@ const DAY_NAMES=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 function getWeekDays(){const now=new Date();const dow=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(dow===0?6:dow-1));return Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return{date:d.toISOString().split('T')[0],name:DAY_NAMES[i],num:d.getDate(),isToday:d.toISOString().split('T')[0]===now.toISOString().split('T')[0]};});}
 function PlannerSec({pid,me,partner}){
   const weekKey=()=>{const d=new Date();const dow=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-(dow===0?6:dow-1));return mon.toISOString().split('T')[0];};
-  const[plans,sPlans]=useState({});// {date: [{id,text,by}]}
-  const[inps,sInps]=useState({});// {date: inputValue}
-  const[loading,sLoad]=useState(true);
-  const key=`plan:${pid}:${weekKey()}`;
-
-  const load=async()=>{const d=await db.get(key);sPlans(d||{});sLoad(false);};
-  useEffect(()=>{load();},[]);
-  useEffect(()=>{const iv=setInterval(load,6000);return()=>clearInterval(iv);},[]);
+  const planKey=`plan:${pid}:${weekKey()}`;
+  const{data:plans,setData:sPlans,loading,refresh}=useSync(planKey,{},6000);
+  const[inps,sInps]=useState({});
 
   const addPlan=async(date)=>{
     const txt=(inps[date]||"").trim();if(!txt)return;
-    const dayPlans=plans[date]||[];
+    const dayPlans=(plans||{})[date]||[];
     const updated={...plans,[date]:[...dayPlans,{id:Date.now(),text:txt,by:me}]};
-    sPlans(updated);await db.set(key,updated);
+    await refresh(updated);
     sInps(p=>({...p,[date]:""}));
   };
 
   const removePlan=async(date,id)=>{
-    const updated={...plans,[date]:(plans[date]||[]).filter(p=>p.id!==id)};
-    sPlans(updated);await db.set(key,updated);
+    const updated={...plans,[date]:((plans||{})[date]||[]).filter(p=>p.id!==id)};
+    await refresh(updated);
   };
 
   const days=getWeekDays();
-  const totalMine=Object.values(plans).flat().filter(p=>norm(p.by)===norm(me)).length;
-  const totalPt=Object.values(plans).flat().filter(p=>norm(p.by)===norm(partner)).length;
+  const plansObj=plans||{};
+  const totalMine=Object.values(plansObj).flat().filter(p=>norm(p.by)===norm(me)).length;
+  const totalPt=Object.values(plansObj).flat().filter(p=>norm(p.by)===norm(partner)).length;
 
   return(
     <div className="sec" id="planner">
@@ -994,7 +1031,7 @@ function PlannerSec({pid,me,partner}){
           <div className="week-wrap">
             <div className="week-grid">
               {days.map(day=>{
-                const dayPlans=(plans[day.date]||[]);
+                const dayPlans=(plansObj[day.date]||[]);
                 return(
                   <div key={day.date} className="week-day">
                     <div className={`week-day-hd ${day.isToday?"today":""}`}>
@@ -1040,20 +1077,19 @@ const SHOP_CATS=[
   {id:'other',icon:'📦',label:'Другое'},
 ];
 function ShopSec({pid,me,partner}){
-  const c=coll("shop",pid);
-  const[items,sI]=useState([]);
+  const{data:items,setData:sI,loading,refresh}=useSync(`shop:${pid}`,[],5000);
+  const safeItems=Array.isArray(items)?items:[];
   const[inp,sInp]=useState('');
   const[cat,sCat]=useState('food');
   const[filter,sFilter]=useState('all');
-  useEffect(()=>{c.load().then(d=>sI(Array.isArray(d)?d:[]));},[]);
-  useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>sI(Array.isArray(d)?d:[])),5000);return()=>clearInterval(iv);},[]);
-  const add=async()=>{if(!inp.trim())return;const updated=[...items,{id:Date.now(),text:inp.trim(),done:false,by:me,cat,ts:Date.now()}];sI(updated);await c.save(updated);sInp('');};
-  const toggle=async(id)=>{const updated=items.map(x=>x.id===id?{...x,done:!x.done,doneBy:!x.done?me:null}:x);sI(updated);await c.save(updated);};
-  const remove=async(id)=>{const updated=items.filter(x=>x.id!==id);sI(updated);await c.save(updated);};
-  const clearDone=async()=>{const updated=items.filter(x=>!x.done);sI(updated);await c.save(updated);};
-  const filtered=items.filter(x=>filter==='all'?true:filter==='active'?!x.done:x.done);
-  const doneCount=items.filter(x=>x.done).length;
-  const activeCount=items.filter(x=>!x.done).length;
+  const add=async()=>{if(!inp.trim())return;await refresh([...safeItems,{id:Date.now(),text:inp.trim(),done:false,by:me,cat,ts:Date.now()}]);sInp('');};
+  const toggle=async(id)=>{await refresh(safeItems.map(x=>x.id===id?{...x,done:!x.done,doneBy:!x.done?me:null}:x));};
+  const remove=async(id)=>{await refresh(safeItems.filter(x=>x.id!==id));};
+  const clearDone=async()=>{await refresh(safeItems.filter(x=>!x.done));};
+  const filtered=safeItems.filter(x=>filter==='all'?true:filter==='active'?!x.done:x.done);
+  const doneCount=safeItems.filter(x=>x.done).length;
+  const activeCount=safeItems.filter(x=>!x.done).length;
+  if(loading)return(<div className="sec" id="shop"><div className="sec-in"><span className="brow">Список покупок</span><h2 className="sh">Купить <em>вместе</em></h2><p className="sp">Добавляйте что нужно купить — оба видите список в реальном времени.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);
   return(
     <div className="sec" id="shop">
       <div className="sec-in">
@@ -1067,9 +1103,9 @@ function ShopSec({pid,me,partner}){
             <button className="fa" disabled={!inp.trim()} onClick={add}>+</button>
           </div>
         </div>
-        {items.length>0&&(
+        {safeItems.length>0&&(
           <div className="shop-filters">
-            {[['all','Все',items.length],['active','Нужно',activeCount],['done','Куплено',doneCount]].map(([id,label,count])=><button key={id} className={`shop-filter ${filter===id?'on':''}`} onClick={()=>sFilter(id)}>{label} {count>0&&<span className="shop-filter-n">{count}</span>}</button>)}
+            {[['all','Все',safeItems.length],['active','Нужно',activeCount],['done','Куплено',doneCount]].map(([id,label,count])=><button key={id} className={`shop-filter ${filter===id?'on':''}`} onClick={()=>sFilter(id)}>{label} {count>0&&<span className="shop-filter-n">{count}</span>}</button>)}
             {doneCount>0&&<button className="shop-clear" onClick={clearDone}>Очистить куплено</button>}
           </div>
         )}
@@ -1119,10 +1155,39 @@ function useTG(){
   return{ok,username:uname,startParam,photoUrl,share};
 }
 
+/* ─── ONBOARDING ─── */
+const OB_STEPS=[
+  {icon:"💕",title:<>Только для <em>вас двоих</em></>,desc:"Закрытое пространство для пары. Никаких лишних людей — только вы."},
+  {icon:"🔄",title:<>Всё <em>в реальном времени</em></>,desc:"Добавляй планы, воспоминания, списки покупок — партнёр видит всё мгновенно."},
+  {icon:"🌹",title:<>Начните <em>прямо сейчас</em></>,desc:"Введите ники Telegram — и окажитесь в одном пространстве. Это займёт 10 секунд."},
+];
+function Onboarding({onDone}){
+  const[step,setStep]=useState(0);
+  const s=OB_STEPS[step];
+  const isLast=step===OB_STEPS.length-1;
+  return(
+    <div className="ob">
+      <div className="ob-steps">
+        {OB_STEPS.map((_,i)=><div key={i} className={`ob-step ${i<=step?"on":""}`}/>)}
+      </div>
+      <div className="ob-icon">{s.icon}</div>
+      <h2 className="ob-title">{s.title}</h2>
+      <p className="ob-desc">{s.desc}</p>
+      <div className="ob-nav">
+        <button className="ob-skip" onClick={onDone}>Пропустить</button>
+        <button className="ob-next" onClick={()=>isLast?onDone():setStep(p=>p+1)}>
+          {isLast?"Начать 💕":"Далее →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── LANDING ─── */
 const SECS=[{id:"hero",l:"Главная"},{id:"profile",l:"Профиль"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"}];
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
+  const online=useOnline();
   const[stuck,sS]=useState(false);const[active,sA]=useState("hero");
   const[sd,sSD]=useState(()=>localStorage.getItem("duo_sd")||"");
   const[ptRibMood,sPtRibMood]=useState(null);
@@ -1195,6 +1260,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
 
   return(
     <div ref={scroll} className="app" {...swipe}>
+      {!online&&<div className="offline-bar">⚠️ Нет соединения — данные могут не синхронизироваться</div>}
       <Timer t0={connectedAt}/>
       <nav className={`nav ${stuck?"stuck":""}`}>
         <span className="nav-logo">💕 {n(me)} & {n(partner)}</span>
@@ -1292,6 +1358,8 @@ class ErrBound extends React.Component {
 }
 
 export default function App(){
+  const[showOb,sShowOb]=useState(()=>!localStorage.getItem("duo_ob_done"));
+  const doneOb=()=>{localStorage.setItem("duo_ob_done","1");sShowOb(false);};
   const[phase,sPhase]=useState("connect");
   const[me,sMe]=useState("");const[partner,sPt]=useState("");
   const{ok,username,startParam,photoUrl,share}=useTG();
@@ -1311,6 +1379,7 @@ export default function App(){
   const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");await saveP(myN,ptN);sPhase("waiting");startPoll(myN,ptN);};
   const disconnect=async()=>{clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(username||meI||"");sPtI("");sSurpI("");};
 
+  if(showOb)return <Onboarding onDone={doneOb}/>;
   if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
   if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
 
