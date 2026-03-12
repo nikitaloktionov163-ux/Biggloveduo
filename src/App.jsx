@@ -146,13 +146,13 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .pcursor-label{margin-top:4px;margin-left:3px;background:rgba(14,12,24,.92);border:1px solid rgba(193,66,104,.2);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:500;color:var(--ink2);white-space:nowrap;}
 
 /* ribbon */
-.ribbon{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:900;background:rgba(14,12,24,.95);border:1px solid rgba(193,66,104,.2);border-radius:999px;padding:6px 12px 6px 9px;display:flex;align-items:center;gap:5px;backdrop-filter:blur(32px) saturate(1.6);box-shadow:0 0 0 1px rgba(255,255,255,.04) inset,0 8px 32px rgba(0,0,0,.7),0 0 20px rgba(193,66,104,.06);animation:up .4s var(--e1) both;white-space:nowrap;max-width:98vw;}
+.ribbon{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:900;background:rgba(14,12,24,.95);border:1px solid rgba(193,66,104,.2);border-radius:999px;padding:8px 16px 8px 12px;display:flex;align-items:center;gap:7px;backdrop-filter:blur(32px) saturate(1.6);box-shadow:0 0 0 1px rgba(255,255,255,.04) inset,0 8px 32px rgba(0,0,0,.7),0 0 20px rgba(193,66,104,.06);animation:up .4s var(--e1) both;white-space:nowrap;max-width:98vw;}
 .rib-ava{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--r),#6a1128);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;text-transform:uppercase;flex-shrink:0;box-shadow:0 0 8px rgba(193,66,104,.3);}
 .rib-text{font-size:11px;font-weight:500;color:var(--ink2);}
 .rib-text b{color:var(--ink);font-weight:600;}
 .rsep{width:1px;height:14px;background:rgba(193,66,104,.15);flex-shrink:0;}
 .rbtns{display:flex;gap:2px;}
-.rb{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;transition:all .2s;position:relative;flex-shrink:0;}
+.rb{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .2s;position:relative;flex-shrink:0;}
 .rb:hover{background:rgba(255,255,255,.11);transform:scale(1.08);}
 .rb.on{background:rgba(193,66,104,.18);border-color:rgba(193,66,104,.35);}
 .rb.kiss-on{background:rgba(193,66,104,.3);border-color:rgba(193,66,104,.6);box-shadow:0 0 10px rgba(193,66,104,.45);animation:kissanim 1s ease-in-out infinite;}
@@ -462,7 +462,7 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .place-del{font-size:10px;color:var(--ink3);cursor:pointer;margin-left:auto;padding:2px 5px;border-radius:4px;transition:color .18s;}
 .place-del:hover{color:rgba(240,100,100,.7);}
 .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:20px;max-width:700px;margin-inline:auto;}
-@media(max-width:560px){.week-grid{grid-template-columns:repeat(7,1fr);gap:4px;}}
+@media(max-width:560px){.week-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px;}.week-grid{grid-template-columns:repeat(7,minmax(88px,1fr));gap:6px;min-width:620px;}}
 .week-day{display:flex;flex-direction:column;gap:4px;}
 .week-day-hd{text-align:center;padding:6px 2px;border-radius:8px;border:1px solid rgba(255,255,255,.06);}
 .week-day-name{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);}
@@ -488,7 +488,7 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .foot{border-top:1px solid rgba(255,255,255,.04);padding:24px clamp(20px,5vw,56px);text-align:center;}
 .foot-t{font-size:10px;font-weight:300;color:rgba(255,255,255,.1);line-height:1.7;}
 .shop-form{max-width:480px;margin-inline:auto;margin-bottom:14px;display:flex;flex-direction:column;gap:7px;}
-.shop-cats{display:flex;gap:6px;justify-content:center;}
+.shop-cats{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;max-width:380px;margin-inline:auto;}
 .shop-cat{font-size:20px;padding:6px 8px;border-radius:10px;border:1.5px solid transparent;cursor:pointer;transition:all .18s var(--e2);line-height:1;}
 .shop-cat:hover{transform:scale(1.12);}
 .shop-cat.on{border-color:rgba(193,66,104,.4);background:rgba(193,66,104,.1);}
@@ -694,7 +694,26 @@ function ProfileSec({pid,me,partner,daysT,tgPhotoUrl}){
     </div>
   );
 }
-const MOODS=[{emoji:"😍",label:"Влюблён(а)"},{emoji:"🥰",label:"Счастлив(а)"},{emoji:"😊",label:"Хорошо"},{emoji:"😌",label:"Спокойно"},{emoji:"🤔",label:"Задумчив(а)"},{emoji:"😴",label:"Устал(а)"},{emoji:"🥺",label:"Грустно"},{emoji:"🔥",label:"Энергично"},{emoji:"💕",label:"Скучаю"},{emoji:"✨",label:"Вдохновлён(а)"}];
+const MOODS=[
+  {emoji:"😍",label:"Влюблён(а)"},
+  {emoji:"🥰",label:"Счастлив(а)"},
+  {emoji:"😊",label:"Хорошо"},
+  {emoji:"🤩",label:"Восторг"},
+  {emoji:"😌",label:"Спокойно"},
+  {emoji:"🥳",label:"Праздник"},
+  {emoji:"😎",label:"Уверен(а)"},
+  {emoji:"🤔",label:"Задумчив(а)"},
+  {emoji:"😴",label:"Устал(а)"},
+  {emoji:"🥺",label:"Грустно"},
+  {emoji:"😤",label:"Раздражён(а)"},
+  {emoji:"🤒",label:"Болею"},
+  {emoji:"😰",label:"Тревожно"},
+  {emoji:"🔥",label:"Энергично"},
+  {emoji:"💕",label:"Скучаю"},
+  {emoji:"✨",label:"Вдохновлён(а)"},
+  {emoji:"🌙",label:"Мечтаю"},
+  {emoji:"💪",label:"Силён(а)"},
+];
 function MoodSec({pid,me,partner}){
   const today=new Date().toISOString().split('T')[0];
   const[myMood,sMy]=useState(null);
@@ -932,31 +951,33 @@ function PlannerSec({pid,me,partner}){
             <span><span className="week-legend-dot" style={{background:"rgba(193,66,104,.5)"}}/>@{n(me)} ({totalMine})</span>
             <span><span className="week-legend-dot" style={{background:"rgba(74,184,193,.5)"}}/>@{n(partner)} ({totalPt})</span>
           </div>
-          <div className="week-grid">
-            {days.map(day=>{
-              const dayPlans=(plans[day.date]||[]);
-              return(
-                <div key={day.date} className="week-day">
-                  <div className={`week-day-hd ${day.isToday?"today":""}`}>
-                    <div className="week-day-name">{day.name}</div>
-                    <div className="week-day-num">{day.num}</div>
+          <div className="week-wrap">
+            <div className="week-grid">
+              {days.map(day=>{
+                const dayPlans=(plans[day.date]||[]);
+                return(
+                  <div key={day.date} className="week-day">
+                    <div className={`week-day-hd ${day.isToday?"today":""}`}>
+                      <div className="week-day-name">{day.name}</div>
+                      <div className="week-day-num">{day.num}</div>
+                    </div>
+                    <div className="week-plans">
+                      {dayPlans.map(p=>(
+                        <div key={p.id} className={`week-plan ${norm(p.by)===norm(me)?"mine":"theirs"}`}
+                          onClick={()=>norm(p.by)===norm(me)&&removePlan(day.date,p.id)}
+                          title={norm(p.by)===norm(me)?"Нажми чтобы удалить":""}>
+                          {p.text}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="week-add-row">
+                      <input className="week-add-inp" placeholder="+" value={inps[day.date]||""} onChange={e=>sInps(p=>({...p,[day.date]:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addPlan(day.date)}/>
+                      <button className="week-add-btn" onClick={()=>addPlan(day.date)}>+</button>
+                    </div>
                   </div>
-                  <div className="week-plans">
-                    {dayPlans.map(p=>(
-                      <div key={p.id} className={`week-plan ${norm(p.by)===norm(me)?"mine":"theirs"}`}
-                        onClick={()=>norm(p.by)===norm(me)&&removePlan(day.date,p.id)}
-                        title={norm(p.by)===norm(me)?"Нажми чтобы удалить":""}>
-                        {p.text}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="week-add-row">
-                    <input className="week-add-inp" placeholder="+" value={inps[day.date]||""} onChange={e=>sInps(p=>({...p,[day.date]:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&addPlan(day.date)}/>
-                    <button className="week-add-btn" onClick={()=>addPlan(day.date)}>+</button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </>}
         {loading&&<p style={{fontSize:12,color:"var(--ink3)",textAlign:"center"}}>Загрузка…</p>}
@@ -964,7 +985,20 @@ function PlannerSec({pid,me,partner}){
     </div>
   );
 }
-const SHOP_CATS=[{id:'food',icon:'🥦',label:'Еда'},{id:'drinks',icon:'🧃',label:'Напитки'},{id:'home',icon:'🏠',label:'Дом'},{id:'care',icon:'🧴',label:'Уход'},{id:'other',icon:'📦',label:'Другое'}];
+const SHOP_CATS=[
+  {id:'food',icon:'🥦',label:'Еда'},
+  {id:'meat',icon:'🥩',label:'Мясо'},
+  {id:'fruit',icon:'🍎',label:'Фрукты'},
+  {id:'bakery',icon:'🥖',label:'Выпечка'},
+  {id:'drinks',icon:'🧃',label:'Напитки'},
+  {id:'sweets',icon:'🍫',label:'Сладкое'},
+  {id:'frozen',icon:'🧊',label:'Заморозка'},
+  {id:'home',icon:'🏠',label:'Дом'},
+  {id:'care',icon:'🧴',label:'Уход'},
+  {id:'pharma',icon:'💊',label:'Аптека'},
+  {id:'pets',icon:'🐾',label:'Питомцы'},
+  {id:'other',icon:'📦',label:'Другое'},
+];
 function ShopSec({pid,me,partner}){
   const c=coll("shop",pid);
   const[items,sI]=useState([]);
@@ -1002,7 +1036,7 @@ function ShopSec({pid,me,partner}){
         <div className="shop-list">
           {filtered.length===0&&<div className="empty-hint">{filter==='done'?'Ничего не куплено':'Список пуст — добавьте первый товар 🛒'}</div>}
           {filtered.map(item=>{
-            const catObj=SHOP_CATS.find(sc=>sc.id===item.cat)||SHOP_CATS[4];
+            const catObj=SHOP_CATS.find(sc=>sc.id===item.cat)||SHOP_CATS.find(sc=>sc.id==='other')||SHOP_CATS[0];
             const isMine=n(item.by)===n(me);
             return(
               <div key={item.id} className={`shop-item ${item.done?'done':''}`}>
