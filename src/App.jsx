@@ -72,7 +72,7 @@ const amb=new Amb();
 
 /* ─── VIBES ─── */
 const VIBES=[{id:"tap",icon:"👆",name:"Касание",pat:[55]},{id:"hb",icon:"💓",name:"Сердце",pat:[110,75,110]},{id:"fire",icon:"🔥",name:"Страсть",pat:[180,70,180,70,360]},{id:"miss",icon:"💌",name:"Скучаю",pat:[75,45,75,45,280,45,75]}];
-const REACTS=["❤️","🌹","💕","😍","✨","🫶","💋","🥰","💖","🔥"];
+const STICKERS=["❤️","🌹","💕","😍","✨","🫶","💋","🥰","💖","🔥","😘","🌸","🦋","💌","🥺","😏","💫","🎀","🍓","🌙","💎","🫦","🤍","🥂"];
 
 /* ─── CSS ─── */
 const CSS = `
@@ -209,6 +209,11 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 
 /* react panel */
 .rpanel{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:901;display:flex;gap:4px;background:rgba(14,12,24,.95);border:1px solid rgba(193,66,104,.2);border-radius:999px;padding:8px 14px;backdrop-filter:blur(24px);box-shadow:0 8px 32px rgba(0,0,0,.5);animation:up .22s var(--e1) both;}
+.stickers{position:fixed;bottom:80px;right:12px;z-index:910;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:12px;background:rgba(14,12,24,.97);border:1px solid rgba(255,255,255,.08);border-radius:20px;backdrop-filter:blur(32px);box-shadow:0 8px 40px rgba(0,0,0,.8);animation:up .25s var(--e1) both;max-width:220px;}
+.sticker{font-size:28px;cursor:pointer;text-align:center;padding:4px;border-radius:10px;transition:transform .15s var(--e2),background .15s;}
+.sticker:active{transform:scale(1.3);background:rgba(193,66,104,.15);}
+.sticker-fly{position:fixed;z-index:999;font-size:36px;pointer-events:none;animation:stickerFly .9s var(--e1) forwards;}
+@keyframes stickerFly{0%{opacity:1;transform:scale(0.5) translateY(0)}60%{opacity:1;transform:scale(1.4) translateY(-60px)}100%{opacity:0;transform:scale(1) translateY(-120px)}}
 .rem{font-size:20px;cursor:pointer;transition:transform .18s var(--e2);}
 .rem:hover{transform:scale(1.32);}
 
@@ -622,8 +627,142 @@ function QuoteCard(){const q=getTodayQuote();return(<div className="quote-card">
 function SkeletonCards({count=3,height=80}){
   return <>{Array.from({length:count},(_,i)=>(<div key={i} className="skel" style={{height,borderRadius:16,marginBottom:10,opacity:1-i*0.2}}/>))}</>;
 }
-const CAL_EM=["💍","🌹","🎂","✈️","🏠","💑","🎁","⭐","🥂","🌙","🎭","🌺"];
-function CalSec({pid,me}){const{data:evs,setData:sE,loading,refresh}=useSync(`cal:${pid}`,[],7000);const[t,sT]=useState("");const[dt,sDt]=useState("");const[ds,sDs]=useState("");const[em,sEm]=useState("💍");const add=async()=>{if(!t.trim()||!dt)return;const ev={id:Date.now(),t:t.trim(),dt,ds:ds.trim(),em,by:me};const u=[...evs,ev].sort((a,b)=>daysUntil(a.dt)-daysUntil(b.dt));await refresh(u);sT("");sDt("");sDs("");};const chip=d=>d===0?["today","🎉 Сегодня"]:d<=7?["soon",`через ${d} дн.`]:d<=30?["near",`через ${d} дн.`]:["far",`через ${d} дн.`];if(loading)return(<div className="sec" id="calendar"><div className="sec-in"><span className="brow">Важные даты</span><h2 className="sh">Наш <em>календарь</em></h2><p className="sp">Годовщины, путешествия, особые события — всё вместе.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="calendar"><div className="sec-in"><span className="brow">Важные даты</span><h2 className="sh">Наш <em>календарь</em></h2><p className="sp">Годовщины, путешествия, особые события — всё вместе.</p><div className="grid">{evs.length===0&&<div className="empty">Добавьте первую важную дату 💍</div>}{evs.map(ev=><div key={ev.id} className="card"><div className="card-top"><span className="card-em">{ev.em}</span><span className="card-meta" style={{color:"var(--g)"}}>{new Date(ev.dt).toLocaleDateString("ru-RU",{day:"numeric",month:"short"})}</span></div><div className="card-t">{ev.t}</div>{ev.ds&&<div className="card-d">{ev.ds}</div>}{(()=>{const[cls,lbl]=chip(daysUntil(ev.dt));return <span className={`card-chip chip-${cls}`}>{lbl}</span>;})()}</div>)}</div><div className="form"><div className="ep">{CAL_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sEm(e)}>{e}</span>)}</div><div className="row"><input className="fi" placeholder="Название" value={t} onChange={e=>sT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><input className="fi fi-date" type="date" value={dt} onChange={e=>sDt(e.target.value)} style={{width:136,flexShrink:0}}/></div><div className="row"><input className="fi" placeholder="Описание" value={ds} onChange={e=>sDs(e.target.value)}/><button className="fa" disabled={!t.trim()||!dt} onClick={add}>Добавить</button></div></div></div></div>);}
+const CAL_EM=["💍","🎂","✈️","🎉","💕","🌹","🏖️","🎓","🏡","💼","🎭","🎪"];
+
+function CalSec({pid,me}){
+  const today=new Date();
+  const[viewDate,sVD]=useState(new Date(today.getFullYear(),today.getMonth(),1));
+  const{data:evs,loading,refresh}=useSync(`cal:${pid}`,[],7000);
+  const[t,sT]=useState("");const[dt,sDt]=useState("");const[ds,sDs]=useState("");const[em,sEm]=useState("💍");
+  const[showForm,sShowForm]=useState(false);
+
+  const daysInMonth=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,0).getDate();
+  const firstDay=(new Date(viewDate.getFullYear(),viewDate.getMonth(),1).getDay()+6)%7;
+  const monthName=viewDate.toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
+
+  const evsByDay={};
+  (evs||[]).forEach(ev=>{
+    const d=new Date(ev.dt);
+    if(d.getFullYear()===viewDate.getFullYear()&&d.getMonth()===viewDate.getMonth()){
+      const day=d.getDate();
+      if(!evsByDay[day])evsByDay[day]=[];
+      evsByDay[day].push(ev);
+    }
+  });
+
+  const prevMonth=()=>sVD(new Date(viewDate.getFullYear(),viewDate.getMonth()-1,1));
+  const nextMonth=()=>sVD(new Date(viewDate.getFullYear(),viewDate.getMonth()+1,1));
+
+  const add=async()=>{
+    if(!t.trim()||!dt)return;
+    const ev={id:Date.now(),t:t.trim(),dt,ds:ds.trim(),em,by:me};
+    const u=[...(evs||[]),ev].sort((a,b)=>new Date(a.dt)-new Date(b.dt));
+    await refresh(u);
+    sT("");sDt("");sDs("");sShowForm(false);
+  };
+
+  const del=async(id)=>{
+    await refresh((evs||[]).filter(e=>e.id!==id));
+  };
+
+  const isToday=(day)=>day===today.getDate()&&viewDate.getMonth()===today.getMonth()&&viewDate.getFullYear()===today.getFullYear();
+
+  const upcomingAll=(evs||[])
+    .filter(e=>new Date(e.dt)>=new Date(today.toDateString()))
+    .sort((a,b)=>new Date(a.dt)-new Date(b.dt))
+    .slice(0,5);
+
+  if(loading)return(
+    <div className="sec" id="calendar"><div className="sec-in">
+      <span className="brow">Важные даты</span>
+      <h2 className="sh">Наш <em>календарь</em></h2>
+      <SkeletonCards count={4} height={60}/>
+    </div></div>
+  );
+
+  return(
+    <div className="sec" id="calendar">
+      <div className="sec-in">
+        <span className="brow">Важные даты</span>
+        <h2 className="sh">Наш <em>календарь</em></h2>
+        <p className="sp">Годовщины, путешествия, особые события.</p>
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <button onClick={prevMonth} style={{background:"none",border:"none",color:"var(--ink2)",fontSize:20,cursor:"pointer",padding:"4px 10px"}}>‹</button>
+          <span style={{fontFamily:"var(--d)",fontSize:16,fontWeight:600,textTransform:"capitalize"}}>{monthName}</span>
+          <button onClick={nextMonth} style={{background:"none",border:"none",color:"var(--ink2)",fontSize:20,cursor:"pointer",padding:"4px 10px"}}>›</button>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+          {["Пн","Вт","Ср","Чт","Пт","Сб","Вс"].map(d=>(
+            <div key={d} style={{textAlign:"center",fontSize:10,color:"var(--ink3)",fontWeight:600,padding:"4px 0"}}>{d}</div>
+          ))}
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:20}}>
+          {Array.from({length:firstDay},(_,i)=><div key={`e${i}`}/>)}
+          {Array.from({length:daysInMonth},(_,i)=>{
+            const day=i+1;
+            const hasEv=!!evsByDay[day];
+            const todayDay=isToday(day);
+            return(
+              <div key={day} style={{
+                aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                borderRadius:10,
+                background:todayDay?"rgba(193,66,104,.2)":hasEv?"rgba(193,66,104,.07)":"rgba(255,255,255,.025)",
+                border:todayDay?"1px solid rgba(193,66,104,.5)":"1px solid transparent",
+                cursor:hasEv?"pointer":"default",
+                position:"relative",
+              }}>
+                <span style={{fontSize:12,fontWeight:todayDay?700:400,color:todayDay?"var(--r)":"var(--ink2)"}}>{day}</span>
+                {hasEv&&<span style={{fontSize:8,marginTop:1}}>{evsByDay[day][0].em}</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        {upcomingAll.length>0&&(
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:10,fontWeight:600,letterSpacing:".1em",color:"rgba(193,66,104,.6)",textTransform:"uppercase",marginBottom:10}}>Ближайшие</div>
+            {upcomingAll.map(ev=>{
+              const dLeft=Math.round((new Date(ev.dt)-new Date(today.toDateString()))/(1000*60*60*24));
+              return(
+                <div key={ev.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"rgba(255,255,255,.03)",borderRadius:12,marginBottom:6,border:"1px solid rgba(255,255,255,.05)"}}>
+                  <span style={{fontSize:20}}>{ev.em}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.t}</div>
+                    <div style={{fontSize:11,color:"var(--ink3)",marginTop:2}}>{new Date(ev.dt).toLocaleDateString("ru-RU",{day:"numeric",month:"long"})}</div>
+                  </div>
+                  <span style={{fontSize:11,color:dLeft===0?"var(--r)":dLeft<=7?"var(--g)":"var(--ink3)",fontWeight:600,flexShrink:0}}>
+                    {dLeft===0?"Сегодня":dLeft===1?"Завтра":`${dLeft} дн.`}
+                  </span>
+                  <span onClick={()=>del(ev.id)} style={{color:"var(--ink3)",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!showForm?(
+          <button className="fa" style={{width:"100%",padding:"12px"}} onClick={()=>sShowForm(true)}>+ Добавить событие</button>
+        ):(
+          <div style={{background:"rgba(255,255,255,.03)",borderRadius:16,padding:"16px",border:"1px solid rgba(193,66,104,.15)"}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+              {CAL_EM.map(e=><span key={e} onClick={()=>sEm(e)} style={{fontSize:20,cursor:"pointer",padding:"4px",borderRadius:8,background:em===e?"rgba(193,66,104,.2)":"transparent"}}>{e}</span>)}
+            </div>
+            <input className="fi" placeholder="Название" value={t} onChange={e=>sT(e.target.value)} style={{marginBottom:8,width:"100%"}}/>
+            <input className="fi fi-date" type="date" value={dt} onChange={e=>sDt(e.target.value)} style={{marginBottom:8,width:"100%"}}/>
+            <input className="fi" placeholder="Описание (необязательно)" value={ds} onChange={e=>sDs(e.target.value)} style={{marginBottom:12,width:"100%"}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>sShowForm(false)} style={{flex:1,padding:"10px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,color:"var(--ink3)",cursor:"pointer"}}>Отмена</button>
+              <button className="fa" disabled={!t.trim()||!dt} onClick={add} style={{flex:2}}>Сохранить</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const MOM_EM=["🌹","💕","✨","😍","🥰","💋","🫶","🌙","☕","🎵","🌊","🏔️","💌","🎉","🌸","🤍"];
 const TAGS=[{id:"happy",l:"Счастье"},{id:"tender",l:"Нежность"},{id:"funny",l:"Смешно"},{id:"important",l:"Важно"}];
@@ -995,8 +1134,8 @@ const DAY_NAMES=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 function getWeekDays(){const now=new Date();const dow=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(dow===0?6:dow-1));return Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return{date:d.toISOString().split('T')[0],name:DAY_NAMES[i],num:d.getDate(),isToday:d.toISOString().split('T')[0]===now.toISOString().split('T')[0]};});}
 function PlannerSec({pid,me,partner}){
   const weekKey=()=>{const d=new Date();const dow=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-(dow===0?6:dow-1));return mon.toISOString().split('T')[0];};
-  const planKey=`plan:${pid}:${weekKey()}`;
-  const{data:plans,setData:sPlans,loading,refresh}=useSync(planKey,{},6000);
+  const wk=weekKey();
+  const{data:plans,setData:sPlans,loading,refresh}=useSync(`plan:${pid}:${wk}`,{},6000);
   const[inps,sInps]=useState({});
 
   const addPlan=async(date)=>{
@@ -1239,8 +1378,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const SWIPE_ORDER=["hero","profile","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
-    ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
     ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv);},
+    ()=>{const nx=SWIPE_ORDER[swipeIdx+1];if(nx)scrollTo(nx);},
     72,
     scroll
   );
@@ -1313,7 +1452,20 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {ghostTop&&<div className="pbar"><div className="pbar-track"/><div className="pbar-thumb" style={{top:ghostTop}}/></div>}
       {pCu&&<div className="pcursor" style={{left:`${pCu.x*100}%`,top:`${pCu.y*100}%`}}><div className="pcursor-dot"/><div className="pcursor-label">@{n(partner)}</div></div>}
       {floats.map(r=><FloatReact key={r.id} {...r} onDone={()=>sF(p=>p.filter(x=>x.id!==r.id))}/>)}
-      {reacts&&<div className="rpanel">{REACTS.map(e=><span key={e} className="rem" onClick={()=>sendReact(e)}>{e}</span>)}</div>}
+      {reacts&&<div className="stickers">
+          {STICKERS.map(s=>(
+            <div key={s} className="sticker" onClick={()=>{
+              sendReact(s);
+              const el=document.createElement("div");
+              el.textContent=s;
+              el.className="sticker-fly";
+              el.style.cssText=`bottom:120px;right:${40+Math.random()*60}px;`;
+              document.body.appendChild(el);
+              setTimeout(()=>el.remove(),900);
+              sReacts(false);
+            }}>{s}</div>
+          ))}
+        </div>}
       <div className="kiss-wrap">{(myKiss||ptKiss)&&(myKiss&&ptKiss?<KissBox start={kissStart}/>:<div className="kiss-wait">{myKiss?<>Ждём <b>@{n(partner)}</b>…</>:<><b>@{n(partner)}</b> ждёт! Зажми 💋</>}</div>)}</div>
       {kToast&&<div key={kToast.k} className="kiss-toast">💋 <b>{kToast.dur}с</b> — ваш поцелуй</div>}
       {vibe&&<div className="vpanel"><div className="vpanel-t">Отправить вибрацию</div>{VIBES.map(p=><div key={p.id} className="vopt" onClick={()=>sendVibe(p)}><span className="vopt-i">{p.icon}</span><span className="vopt-n">{p.name}</span></div>)}</div>}
