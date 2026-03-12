@@ -26,9 +26,6 @@ const notifyPartner=async(partnerUsername,text,emoji="💕")=>{
   try{await db.set(`notify:${n(partnerUsername)}:${Date.now()}`,{text:`${emoji} ${text}`,ts:Date.now()});}catch(e){}
 };
 const coll = (ns, id) => ({ save: v=>db.set(`${ns}:${id}`,v), load: ()=>db.get(`${ns}:${id}`).then(r=>r||[]) });
-const saveP=(me,to)=>db.set(`p:${n(me)}`,{wants:n(to),ts:Date.now()});
-const loadP=async u=>{const d=await db.get(`p:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
-const clearU=me=>["p","st"].forEach(k=>db.del(`${k}:${n(me)}`));
 const saveSt=(me,d)=>db.set(`st:${n(me)}`,{...d,ts:Date.now()});
 
 // Realtime channel (polling fallback)
@@ -72,27 +69,33 @@ function useOnline(){
 const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d.ts<TTL?d:null;};
 
 /* ─── AMBIENT ─── */
-function makeReverb(ctx,seconds=3,decay=2){const conv=ctx.createConvolver();const rate=ctx.sampleRate;const len=rate*seconds;const buf=ctx.createBuffer(2,len,rate);for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);}conv.buffer=buf;return conv;}
-const AMIN=[220,261.6,293.7,329.6,392,440,523.2,659.2];
-function buildMelody(ctx,dest,notes,bpm=52){
-  const rev=makeReverb(ctx,4,1.8);rev.connect(dest);
-  const master=ctx.createGain();master.gain.setValueAtTime(0,0);master.gain.linearRampToValueAtTime(0.18,ctx.currentTime+4);master.connect(rev);master.connect(dest);
-  const beat=60/bpm;let time=ctx.currentTime+1;const osc_refs=[];
-  const playNote=(freq,start,dur,vol=0.15)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.setValueAtTime(freq,start);const vib=ctx.createOscillator(),vibg=ctx.createGain();vib.frequency.value=4.5;vibg.gain.value=2.5;vib.connect(vibg);vibg.connect(o.frequency);g.gain.setValueAtTime(0,start);g.gain.linearRampToValueAtTime(vol,start+0.08);g.gain.setValueAtTime(vol,start+dur-0.15);g.gain.linearRampToValueAtTime(0,start+dur);o.connect(g);g.connect(master);o.start(start);o.stop(start+dur+0.1);vib.start(start);vib.stop(start+dur+0.1);osc_refs.push(o,vib);};
-  const chords=[[220,261.6,329.6],[174.6,220,261.6],[261.6,329.6,392],[196,246.9,293.7]];
-  const scheduleLoop=()=>{let t=ctx.currentTime+0.5;for(let rep=0;rep<8;rep++){chords.forEach(chord=>{chord.forEach(f=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f/2;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.04,t+0.3);g.gain.setValueAtTime(0.04,t+beat*4-0.3);g.gain.linearRampToValueAtTime(0,t+beat*4);o.connect(g);g.connect(master);o.start(t);o.stop(t+beat*4+0.1);osc_refs.push(o);});t+=beat*4;});}};scheduleLoop();
-  notes.forEach(([ni,beats,vol=0.18])=>{playNote(AMIN[ni],time,beats*beat,vol);time+=beats*beat;});
-  return{master,osc_refs};
-}
 const TRACKS=[
-  {id:"lana",name:"Say Yes to Heaven",icon:"🌙",build:(ctx,dest)=>{const notes=[[4,3],[5,2],[4,2],[3,3],[2,4],[3,2],[4,2],[5,3],[6,2],[5,4],[4,3],[3,2],[2,2],[1,3],[0,4],[2,2],[3,2],[4,3],[5,2],[4,6]];return buildMelody(ctx,dest,notes,48).master;}},
-  {id:"summertime",name:"Summertime Sadness",icon:"🌹",build:(ctx,dest)=>{const notes=[[5,4],[4,2],[5,2],[6,4],[5,3],[4,3],[3,4],[2,2],[3,2],[4,4],[3,3],[2,3],[4,4],[5,2],[6,2],[7,4],[6,3],[5,3],[4,4],[3,2],[2,2],[1,6]];return buildMelody(ctx,dest,notes,50).master;}},
-  {id:"videoGames",name:"Video Games",icon:"💕",build:(ctx,dest)=>{const notes=[[2,3],[3,2],[4,3],[5,4],[4,2],[3,2],[2,4],[1,3],[2,2],[3,3],[4,4],[3,6],[5,3],[6,2],[5,3],[4,4],[3,2],[2,2],[1,4],[0,3],[1,2],[2,6]];return buildMelody(ctx,dest,notes,46).master;}},
-  {id:"young",name:"Young and Beautiful",icon:"✨",build:(ctx,dest)=>{const notes=[[5,2],[6,2],[7,4],[6,2],[5,2],[4,4],[3,2],[4,2],[5,4],[4,2],[3,2],[2,6],[4,2],[5,2],[6,4],[5,2],[4,2],[3,4],[2,2],[3,2],[4,4],[3,2],[2,2],[1,6]];return buildMelody(ctx,dest,notes,52).master;}},
-  {id:"born",name:"Born to Die",icon:"🥀",build:(ctx,dest)=>{const notes=[[3,4],[4,3],[3,2],[2,3],[1,4],[0,4],[2,3],[3,2],[4,3],[5,4],[4,3],[3,4],[2,4],[1,3],[2,2],[3,3],[2,4],[1,6],[3,3],[4,2],[5,3],[4,4],[3,2],[2,6]];return buildMelody(ctx,dest,notes,44).master;}},
-  {id:"paradise",name:"Paradise",icon:"🌊",build:(ctx,dest)=>{const notes=[[0,3],[2,2],[3,3],[4,4],[3,2],[2,3],[1,4],[2,3],[3,2],[4,3],[5,4],[4,6],[3,3],[4,2],[5,3],[6,4],[5,2],[4,3],[3,4],[2,3],[1,2],[0,6]];return buildMelody(ctx,dest,notes,50).master;}},
+  {id:"1",name:"Романтика",icon:"🌹"},
+  {id:"2",name:"Мечты",icon:"🌙"},
+  {id:"3",name:"Нежность",icon:"💕"},
+  {id:"4",name:"Страсть",icon:"🔥"},
+  {id:"5",name:"Покой",icon:"🌊"},
+  {id:"6",name:"Радость",icon:"✨"},
 ];
-class Amb{constructor(){this.ctx=null;this.m=null;this.trackId="lana";}start(trackId){if(this.ctx){try{this.ctx.close();}catch(e){}this.ctx=null;}this.trackId=trackId||this.trackId;const track=TRACKS.find(t=>t.id===this.trackId)||TRACKS[0];this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.m=track.build(this.ctx,this.ctx.destination);}switchTo(trackId){const was=!!this.ctx;if(was){try{this.ctx.close();}catch(e){}this.ctx=null;}this.trackId=trackId;if(was)this.start(trackId);}stop(){if(!this.ctx)return;try{this.m?.gain?.linearRampToValueAtTime&&this.m.gain.linearRampToValueAtTime(0,this.ctx.currentTime+1);}catch(e){}setTimeout(()=>{try{this.ctx?.close();}catch(e){}this.ctx=null;this.m=null;},1100);}get playing(){return!!this.ctx;}}
+function buildPad(ctx,dest,rootHz,mode="romantic"){
+  const rev=ctx.createConvolver();
+  const buf=ctx.createBuffer(2,ctx.sampleRate*2,ctx.sampleRate);
+  for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<buf.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/buf.length,3);}
+  rev.buffer=buf;
+  rev.connect(dest);
+  const master=ctx.createGain();
+  master.gain.setValueAtTime(0,0);
+  master.gain.linearRampToValueAtTime(0.12,ctx.currentTime+3);
+  master.connect(rev);
+  master.connect(dest);
+  const intervals={romantic:[1,1.2,1.5,2,2.4,3],dreamy:[1,1.19,1.5,1.78,2.38,3],tender:[1,1.25,1.5,2,2.5,3.17],passion:[1,1.12,1.5,1.78,2.25,2.97],calm:[1,1.33,1.5,2,2.67,4],joy:[1,1.25,1.6,2,2.5,3.2]};
+  const modes=["romantic","dreamy","tender","passion","calm","joy"];
+  const idx=parseInt(mode)-1;
+  const ints=intervals[modes[idx>=0&&idx<6?idx:0]]||intervals.romantic;
+  ints.forEach((ratio,i)=>{const o=ctx.createOscillator(),g=ctx.createGain(),lfo=ctx.createOscillator(),lg=ctx.createGain();o.type=i<2?"sine":"triangle";o.frequency.value=rootHz*ratio;lfo.frequency.value=0.05+i*0.02;lg.gain.value=1.2;lfo.connect(lg);lg.connect(o.frequency);g.gain.value=0.06-i*0.007;o.connect(g);g.connect(master);o.start();lfo.start();});
+  return master;
+}
+class Amb{constructor(){this.ctx=null;this.master=null;this.trackId="1";}start(id){this.stop();this.trackId=id||this.trackId;this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.master=buildPad(this.ctx,this.ctx.destination,220,this.trackId);}switchTo(id){const was=this.playing;this.stop();this.trackId=id;if(was)this.start(id);}stop(){if(!this.ctx)return;try{if(this.master)this.master.gain.linearRampToValueAtTime(0,this.ctx.currentTime+1.5);const ctx=this.ctx;this.ctx=null;this.master=null;setTimeout(()=>{try{ctx.close();}catch(e){}},1600);}catch(e){this.ctx=null;this.master=null;}}get playing(){return!!this.ctx;}}
 const amb=new Amb();
 function playSound(type){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);const sounds={kiss:{freq:880,type:"sine",dur:.18,vol:.3},react:{freq:660,type:"sine",dur:.12,vol:.25},vibe:{freq:220,type:"sawtooth",dur:.1,vol:.2},chat:{freq:540,type:"sine",dur:.15,vol:.2},music:{freq:440,type:"sine",dur:.2,vol:.25}};const s=sounds[type]||sounds.react;o.type=s.type;o.frequency.setValueAtTime(s.freq,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(s.freq*1.5,ctx.currentTime+s.dur);g.gain.setValueAtTime(s.vol,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+s.dur);o.start();o.stop(ctx.currentTime+s.dur);setTimeout(()=>ctx.close(),500);}catch(e){}}
 
@@ -174,34 +177,6 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 .sep{display:flex;align-items:center;gap:10px;margin:18px 0;}
 .sep::before,.sep::after{content:"";flex:1;height:1px;background:rgba(193,66,104,.12);}
 .sep span{font-size:11px;color:var(--ink3);}
-
-/* waiting */
-.wait{display:flex;flex-direction:column;align-items:center;gap:14px;padding:6px 0;animation:up .4s var(--e1) both;}
-.orb{width:68px;height:68px;border-radius:50%;background:radial-gradient(circle at 40% 35%,rgba(193,66,104,.38),rgba(193,66,104,.05));border:1px solid rgba(193,66,104,.22);display:flex;align-items:center;justify-content:center;font-size:26px;position:relative;}
-.orb::before,.orb::after{content:"";position:absolute;border-radius:50%;border:1px solid rgba(193,66,104,.1);animation:rr 2.2s ease-out infinite;}
-.orb::before{inset:-10px;}
-.orb::after{inset:-22px;animation-delay:.72s;border-color:rgba(193,66,104,.05);}
-@keyframes rr{0%{opacity:.9;transform:scale(.83)}100%{opacity:0;transform:scale(1.28)}}
-.wait-name{font-family:var(--d);font-size:20px;font-weight:700;}
-.wait-name span{color:rgba(193,66,104,.85);}
-.wait-tip{font-size:12px;font-weight:300;color:var(--ink3);text-align:center;max-width:250px;line-height:1.72;}
-.wait-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--r);vertical-align:middle;margin-right:5px;animation:blink 1.5s ease-in-out infinite;}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.08}}
-.wait-cancel{font-size:12px;color:var(--ink3);cursor:pointer;text-decoration:underline;text-underline-offset:3px;transition:color .2s;}
-.wait-cancel:hover{color:var(--ink2);}
-
-/* burst */
-.burst{position:fixed;inset:0;z-index:1001;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--c0);animation:brst 3s var(--e1) forwards;pointer-events:none;overflow:hidden;}
-@keyframes brst{0%,55%{opacity:1}100%{opacity:0}}
-.burst-p{position:absolute;animation:bp linear forwards;opacity:0;}
-@keyframes bp{0%{transform:translateY(0) rotate(var(--r)) scale(.5);opacity:0}10%{opacity:.9}100%{transform:translateY(-88vh) rotate(calc(var(--r) + 220deg)) scale(.5);opacity:0}}
-.burst-ring{width:100px;height:100px;border-radius:50%;border:1.5px solid var(--r);display:flex;align-items:center;justify-content:center;animation:pop .58s var(--e2) .08s both;box-shadow:0 0 40px rgba(193,66,104,.4),0 0 80px rgba(193,66,104,.15);}
-@keyframes pop{from{transform:scale(.12);opacity:0}to{transform:scale(1);opacity:1}}
-.burst-icon{font-size:40px;animation:pop .65s var(--e2) .2s both;}
-.burst-h{font-family:var(--d);font-size:clamp(28px,5.5vw,42px);font-weight:700;margin-top:24px;animation:su .7s var(--e1) .32s both;}
-.burst-s{font-size:13px;color:var(--ink2);margin-top:5px;animation:su .7s var(--e1) .46s both;}
-.burst-s span{color:rgba(193,66,104,.85);}
-@keyframes su{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:none}}
 
 /* ── APP SHELL ── */
 .app{height:100svh;overflow-y:scroll;overflow-x:hidden;position:relative;scroll-behavior:smooth;}
@@ -1786,7 +1761,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[vibe,sVibe]=useState(false);const[vibeR,sVR]=useState(null);const lastVT=useRef(0);
   const[music,sMusic]=useState(false);
   const[trackPicker,sTrackPicker]=useState(false);
-  const[currentTrack,sCurrentTrack]=useState("lana");
+  const[currentTrack,sCurrentTrack]=useState("1");
   const[surp,sSurp]=useState(false);const sFired=useRef(false);
   const scroll=useRef(null);
   const[scrollEl,sScrollEl]=useState(null);
@@ -1973,29 +1948,40 @@ class ErrBound extends React.Component {
 export default function App(){
   const[showOb,sShowOb]=useState(()=>!localStorage.getItem("duo_ob_done"));
   const doneOb=()=>{localStorage.setItem("duo_ob_done","1");sShowOb(false);};
-  const[phase,sPhase]=useState(()=>{const s=localStorage.getItem("duo_session");if(s){try{const d=JSON.parse(s);if(d.me&&d.partner&&d.ca)return"landing";}catch(e){}}return"connect";});
-  const[me,sMe]=useState(()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s).me||"":"";}catch{return"";}});
-  const[partner,sPt]=useState(()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s).partner||"":"";}catch{return"";}});
+  const savedSession=()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s):null;}catch{return null;}};
+  const[phase,sPhase]=useState(()=>savedSession()?"landing":"connect");
+  const[me,sMe]=useState(()=>savedSession()?.me||"");
+  const[partner,sPt]=useState(()=>savedSession()?.partner||"");
   const{ok,username,startParam,photoUrl,share}=useTG();
   const[meI,sMeI]=useState("");
   const[ptI,sPtI]=useState("");
   const[surpI,sSurpI]=useState("");
-  const[err,sErr]=useState("");const[ca,sCA]=useState(()=>{try{const s=localStorage.getItem("duo_session");return s?JSON.parse(s).ca||null:null;}catch{return null;}});const[copied,sCopied]=useState(false);
-  const poll=useRef(null);const burst=useRef(null);
+  const[err,sErr]=useState("");const[ca,sCA]=useState(()=>savedSession()?.ca||null);const[copied,sCopied]=useState(false);
 
   useEffect(()=>{const s=document.createElement("style");s.textContent=CSS;document.head.appendChild(s);return()=>document.head.removeChild(s);},[]);
   useEffect(()=>{if(username)sMeI(username);},[username]);
   useEffect(()=>{if(startParam&&!ptI)sPtI(startParam);},[startParam]);
+  useEffect(()=>()=>{amb.stop();},[]);
 
-  const startPoll=useCallback((myN,ptN)=>{let attempts=0;poll.current=setInterval(async()=>{attempts++;const d=await loadP(ptN);if(d&&d.wants===n(myN)){clearInterval(poll.current);sMe(myN);sPt(ptN);const connAt=Date.now();sCA(connAt);localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));sPhase("burst");burst.current=setTimeout(()=>sPhase("landing"),3000);}if(attempts===80)sErr("Партнёр ещё не открыл приложение. Отправь ему ссылку 💕");},1500);},[]);
-  useEffect(()=>()=>{clearInterval(poll.current);clearTimeout(burst.current);if(me)clearU(me);amb.stop();},[me]);
-
-  const connect=async()=>{const myN=meI.trim(),ptN=ptI.trim();console.log("Connecting:",myN,"→",ptN,"pair:",pair(myN,ptN));if(!myN||!ptN){sErr("Заполни оба поля.");return;}if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}sErr("");console.log("Saving presence...");await saveP(myN,ptN);console.log("Saved. Starting poll...");sPhase("waiting");startPoll(myN,ptN);};
-  const disconnect=async()=>{localStorage.removeItem("duo_session");clearInterval(poll.current);if(me)await clearU(me);amb.stop();sPhase("connect");sMe("");sPt("");sCA(null);sMeI(username||meI||"");sPtI("");sSurpI("");};
+  const connect=()=>{
+    const myN=meI.trim(),ptN=ptI.trim();
+    if(!myN||!ptN){sErr("Заполни оба поля.");return;}
+    if(n(myN)===n(ptN)){sErr("Нельзя подключиться к самому себе 😊");return;}
+    sErr("");
+    const connAt=Date.now();
+    localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
+    sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
+  };
+  const disconnect=()=>{
+    localStorage.removeItem("duo_session");
+    amb.stop();
+    sPhase("connect");
+    sMe("");sPt("");sCA(null);
+    sMeI(username||"");sPtI("");sSurpI("");
+  };
 
   if(showOb)return <Onboarding onDone={doneOb}/>;
   if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
-  if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
 
   return(
     <div className="co">
@@ -2003,47 +1989,35 @@ export default function App(){
       <div className="petals"><Petals/></div>
       <div className="co-card">
         <span className="co-gem">🌹</span>
-        {phase==="waiting"?(
-          <div className="wait">
-            <div className="orb">💌</div>
-            <div className="wait-name">Жду <span>@{n(ptI)}</span>…</div>
-            <div className="wait-tip"><span className="wait-dot"/>Попроси <strong style={{color:"var(--ink2)"}}>@{n(ptI)}</strong> открыть и ввести <strong style={{color:"var(--ink2)"}}>@{n(meI)}</strong></div>
-            <button className="btn-main" style={{opacity:.82}} onClick={()=>{share(meI.trim());sCopied(true);setTimeout(()=>sCopied(false),2000);}}>{copied?"✓ Скопировано!":(ok?"Отправить в Telegram ✈️":"Скопировать ссылку 🔗")}</button>
-            <span className="wait-cancel" onClick={async()=>{clearInterval(poll.current);await clearU(meI.trim());sPhase("connect");}}>Отменить</span>
-          </div>
-        ):(
-          <>
-            <h1 className="co-h">Наше приложение,<br/><i>только для двоих</i></h1>
-            <p className="co-sub">Введи ники — и окажитесь в одном пространстве.</p>
-            <div className="sep"><span>✦</span></div>
-            <div className="field">
-              <label className="label">Твой ник</label>
-              <div className="iw"><span className="iat">@</span><input className="inp" placeholder="username" value={meI} onChange={e=>{sMeI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()} readOnly={!!username}/></div>
-              {ok&&username&&<p className="hint">✓ Получено из Telegram</p>}
-            </div>
-            <div className="field">
-              <label className="label">Ник партнёра</label>
-              <div className="iw"><span className="iat">@</span><input className="inp" placeholder="её или его username" value={ptI} onChange={e=>{sPtI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()}/></div>
-            </div>
-            <div className="field">
-              <label className="label">💌 Сюрприз-послание</label>
-              <textarea className="ta" placeholder="Появится когда она долистает до конца…" value={surpI} onChange={e=>sSurpI(e.target.value)}/>
-              <p className="hint">Она увидит это в самом конце 🌹</p>
-            </div>
-            {err&&<p className="err">{err}</p>}
-            <button className="btn-main" disabled={!meI.trim()||!ptI.trim()} onClick={connect}>Войти вместе 💕</button>
-            <button className="btn-main" style={{marginTop:8,opacity:.55,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"var(--ink3)"}}
-              onClick={()=>{
-                const myN=(meI.trim()||"test_me");
-                const ptN="partner_test";
-                const connAt=Date.now();
-                localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
-                sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
-              }}>
-              🧪 Войти без партнёра (тест)
-            </button>
-          </>
-        )}
+        <h1 className="co-h">Наше приложение,<br/><i>только для двоих</i></h1>
+        <p className="co-sub">Введи ники — и окажитесь в одном пространстве.</p>
+        <div className="sep"><span>✦</span></div>
+        <div className="field">
+          <label className="label">Твой ник</label>
+          <div className="iw"><span className="iat">@</span><input className="inp" placeholder="username" value={meI} onChange={e=>{sMeI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()} readOnly={!!username}/></div>
+          {ok&&username&&<p className="hint">✓ Получено из Telegram</p>}
+        </div>
+        <div className="field">
+          <label className="label">Ник партнёра</label>
+          <div className="iw"><span className="iat">@</span><input className="inp" placeholder="её или его username" value={ptI} onChange={e=>{sPtI(e.target.value);sErr("");}} onKeyDown={e=>e.key==="Enter"&&connect()}/></div>
+        </div>
+        <div className="field">
+          <label className="label">💌 Сюрприз-послание</label>
+          <textarea className="ta" placeholder="Появится когда она долистает до конца…" value={surpI} onChange={e=>sSurpI(e.target.value)}/>
+          <p className="hint">Она увидит это в самом конце 🌹</p>
+        </div>
+        {err&&<p className="err">{err}</p>}
+        <button className="btn-main" disabled={!meI.trim()||!ptI.trim()} onClick={connect}>Войти вместе 💕</button>
+        <button className="btn-main" style={{marginTop:8,opacity:.55,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"var(--ink3)"}}
+          onClick={()=>{
+            const myN=(meI.trim()||"test_me");
+            const ptN="partner_test";
+            const connAt=Date.now();
+            localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
+            sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
+          }}>
+          🧪 Войти без партнёра (тест)
+        </button>
       </div>
     </div>
   );
