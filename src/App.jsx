@@ -1417,6 +1417,108 @@ function MoodSec({pid,me,partner}){
     </div>
   );
 }
+const BODY_ZONES=[
+  {id:"head",  icon:"🧠", label:"Голова"},
+  {id:"heart", icon:"❤️", label:"Сердце"},
+  {id:"energy",icon:"⚡", label:"Энергия"},
+  {id:"sleep", icon:"😴", label:"Сон"},
+  {id:"hunger",icon:"🍽️", label:"Голод"},
+];
+const BODY_LEVELS=[
+  {v:1,label:"Плохо",  color:"#e05555"},
+  {v:2,label:"Средне", color:"#e0a055"},
+  {v:3,label:"Ок",     color:"#a0c055"},
+  {v:4,label:"Хорошо", color:"#55c070"},
+  {v:5,label:"Отлично",color:"#55a0e0"},
+];
+function BodyMoodSec({pid, me, partner}){
+  const today=new Date().toISOString().slice(0,10);
+  const[my,setMy]=useState({});
+  const[pt,setPt]=useState({});
+  const[note,setNote]=useState("");
+
+  useEffect(()=>{
+    if(!pid)return;
+    const load=async()=>{
+      const[md,pd]=await Promise.all([
+        db.get(`body:${n(me)}:${today}`),
+        db.get(`body:${n(partner)}:${today}`),
+      ]);
+      if(md){setMy(md.zones||{});setNote(md.note||"");}
+      if(pd)setPt(pd.zones||{});
+    };
+    load();
+    const iv=setInterval(load,20000);
+    return()=>clearInterval(iv);
+  },[pid,today]);
+
+  const setZone=async(zoneId,val)=>{
+    const newZones={...my,[zoneId]:val};
+    setMy(newZones);
+    await db.set(`body:${n(me)}:${today}`,{zones:newZones,note,ts:Date.now()});
+  };
+
+  const saveNote=async()=>{
+    await db.set(`body:${n(me)}:${today}`,{zones:my,note,ts:Date.now()});
+  };
+
+  return(
+    <div className="sec" id="bodymood">
+      <div className="sec-in">
+        <span className="brow">Самочувствие</span>
+        <h2 className="sh">Как ты <em>себя чувствуешь</em></h2>
+        <p className="sp">Расскажи как тебе физически — партнёр увидит и поймёт.</p>
+
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,color:"rgba(193,66,104,.7)",fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",marginBottom:12}}>@{n(me)} — сегодня</div>
+          {BODY_ZONES.map(zone=>(
+            <div key={zone.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <span style={{fontSize:20,width:28,textAlign:"center"}}>{zone.icon}</span>
+              <span style={{fontSize:13,color:"var(--ink2)",width:64,flexShrink:0}}>{zone.label}</span>
+              <div style={{display:"flex",gap:4,flex:1}}>
+                {BODY_LEVELS.map(lv=>(
+                  <div key={lv.v} onClick={()=>setZone(zone.id,lv.v)} style={{
+                    flex:1,height:28,borderRadius:6,cursor:"pointer",
+                    background:my[zone.id]===lv.v?lv.color:"rgba(255,255,255,.05)",
+                    border:`1px solid ${my[zone.id]===lv.v?lv.color:"rgba(255,255,255,.08)"}`,
+                    transition:"all .15s",
+                  }}/>
+                ))}
+              </div>
+              {my[zone.id]&&<span style={{fontSize:11,color:"var(--ink3)",width:40,textAlign:"right"}}>
+                {BODY_LEVELS.find(l=>l.v===my[zone.id])?.label}
+              </span>}
+            </div>
+          ))}
+          <textarea className="ta" placeholder="Заметка (болит голова, устал(а)…)" value={note}
+            onChange={e=>setNote(e.target.value)} onBlur={saveNote}
+            style={{marginTop:8,minHeight:50}}/>
+        </div>
+
+        <div style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:16,padding:"14px 16px"}}>
+          <div style={{fontSize:11,color:"var(--teal)",fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",marginBottom:12}}>@{n(partner)} — сегодня</div>
+          {BODY_ZONES.map(zone=>(
+            <div key={zone.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style={{fontSize:18,width:24}}>{zone.icon}</span>
+              <span style={{fontSize:12,color:"var(--ink3)",width:60,flexShrink:0}}>{zone.label}</span>
+              <div style={{flex:1,height:8,borderRadius:4,background:"rgba(255,255,255,.05)",overflow:"hidden"}}>
+                {pt[zone.id]&&<div style={{
+                  height:"100%",borderRadius:4,
+                  width:`${(pt[zone.id]/5)*100}%`,
+                  background:BODY_LEVELS.find(l=>l.v===pt[zone.id])?.color||"var(--r)",
+                  transition:"width .3s"
+                }}/>}
+              </div>
+              <span style={{fontSize:11,color:"var(--ink3)",width:44,textAlign:"right"}}>
+                {pt[zone.id]?BODY_LEVELS.find(l=>l.v===pt[zone.id])?.label:"—"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 const QUESTIONS=["Что тебе больше всего нравится в нас двоих?","Какой момент нашей совместной жизни ты хотел(а) бы пережить снова?","Чем ты восхищаешься во мне больше всего?","Какое наше совместное приключение ты хочешь обязательно повторить?","Что делает тебя счастливым(ой) в наших отношениях?","Какую черту моего характера ты ценишь больше всего?","О чём ты мечтаешь для нас на следующий год?","Какую традицию ты хотел(а) бы завести в наших отношениях?","Что я делаю, что заставляет тебя улыбаться?","Если бы у нас был один день без забот — как бы ты его провёл(а)?","Что для тебя значит чувствовать себя любимым(ой)?","Какой подарок от меня запомнился тебе больше всего?","Чему ты научился(ась) у меня?","Какое место ты хочешь посетить вместе со мной?","Что ты хочешь, чтобы я знал(а) о тебе?","Как ты понял(а), что влюбился(ась)?","Какой твой любимый способ провести время вдвоём?","Что для тебя важнее всего в отношениях?","Какую песню ты ассоциируешь с нами?","Что бы ты хотел(а) изменить в себе ради нас?","Как ты видишь нас через 5 лет?","Что тебя больше всего удивляет во мне?","Какой был наш самый смешной момент?","За что ты благодарен(на) мне прямо сейчас?","Что я могу сделать, чтобы сделать тебя счастливее?","Опиши меня тремя словами.","Какой комплимент от меня ты вспоминаешь чаще всего?","Что ты чувствуешь, когда мы вместе?","Если бы мы написали книгу о нас — как бы она называлась?","Что бы ты сделал(а) для меня, если бы я был(а) расстроен(а)?"];
 const getTodayQ=()=>QUESTIONS[Math.floor(Date.now()/86400000)%QUESTIONS.length];
 function QASec({pid,me,partner}){
@@ -1451,6 +1553,264 @@ function QASec({pid,me,partner}){
           </div>}
         </div>
         {archive.length>0&&<details className="qa-archive"><summary>Предыдущие вопросы ({archive.length})</summary>{archive.map((e,i)=><div key={i} className="qa-archive-item"><div className="qa-q-small">«{e.question}»</div><div className="qa-answers" style={{marginTop:8}}><div className="qa-ans-card mine"><div className="qa-ans-who">@{n(me)}</div><div className="qa-ans-text">{e.answers[norm(me)]?.text}</div></div><div className="qa-ans-card theirs"><div className="qa-ans-who">@{n(partner)}</div><div className="qa-ans-text">{e.answers[norm(partner)]?.text}</div></div></div></div>)}</details>}
+      </div>
+    </div>
+  );
+}
+const TRUTH_Q=[
+  "Что тебе больше всего нравится во мне?",
+  "Какой твой самый счастливый момент с нами?",
+  "О чём ты мечтаешь но боишься сказать?",
+  "Что ты хотел(а) бы изменить в наших отношениях?",
+  "Какой день с нами ты помнишь лучше всего?",
+  "Что делает тебя счастливым(ой) прямо сейчас?",
+  "Какой твой секрет который я ещё не знаю?",
+  "Если бы мы поехали куда угодно — куда?",
+  "Что меня в тебе удивляет каждый раз?",
+  "Какой момент ты хотел(а) бы прожить снова?",
+  "Что ты чувствуешь когда я рядом?",
+  "Какой подарок от меня запомнился больше всего?",
+  "Что ты думаешь о нашем будущем?",
+  "Какое твоё любимое воспоминание детства?",
+  "Что тебя пугает в жизни больше всего?",
+];
+const DARE_D=[
+  "Напиши мне 3 вещи за которые ты благодарен(а)",
+  "Отправь голосовое как ты поёшь нашу песню",
+  "Расскажи о моменте когда я тебя рассмешил(а)",
+  "Напиши стихотворение обо мне (хотя бы 2 строки)",
+  "Сделай фото своей улыбки прямо сейчас",
+  "Напиши что ты любишь во мне — 5 пунктов",
+  "Расскажи какой я в твоих мечтах",
+  "Напиши сообщение как будто мы не виделись год",
+  "Придумай нам приключение на выходные",
+  "Напиши почему именно я",
+];
+const NEVER_Q=[
+  "Никогда не плакал(а) от счастья",
+  "Никогда не влюблялся(лась) с первого взгляда",
+  "Никогда не писал(а) письмо которое не отправил(а)",
+  "Никогда не думал(а) об нас в неподходящий момент",
+  "Никогда не улыбался(лась) от нашей переписки",
+  "Никогда не представлял(а) нас через 10 лет",
+  "Никогда не хотел(а) остановить время рядом с тобой",
+  "Никогда не скучал(а) так сильно",
+];
+function GamesSec({pid, me, partner}){
+  const[game,setGame]=useState(null);
+  const[card,setCard]=useState(null);
+  const[myAns,setMyAns]=useState("");
+  const[answers,setAnswers]=useState({});
+  const[history,setHistory]=useState([]);
+
+  useEffect(()=>{
+    db.get(`games:${pid}`).then(d=>{if(d)setHistory(d||[]);});
+  },[pid]);
+
+  const draw=(type)=>{
+    const pool=type==="truth"?TRUTH_Q:type==="dare"?DARE_D:NEVER_Q;
+    const unused=pool.filter(q=>!history.find(h=>h.q===q&&h.type===type));
+    const list=unused.length>0?unused:pool;
+    const q=list[Math.floor(Math.random()*list.length)];
+    setCard({q,type});setGame(type);setMyAns("");setAnswers({});
+  };
+
+  const saveAnswer=async()=>{
+    if(!myAns.trim())return;
+    const newAns={...answers,[n(me)]:myAns.trim()};
+    setAnswers(newAns);
+    const entry={id:Date.now(),q:card.q,type:game,answers:newAns,ts:Date.now()};
+    const newH=[entry,...history].slice(0,50);
+    setHistory(newH);
+    await db.set(`games:${pid}`,newH);
+    setMyAns("");
+  };
+
+  return(
+    <div className="sec" id="games">
+      <div className="sec-in">
+        <span className="brow">Игры</span>
+        <h2 className="sh">Играем <em>вместе</em></h2>
+        <p className="sp">Узнайте друг друга глубже — честно и весело.</p>
+
+        {!card&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:24}}>
+            {[
+              {type:"truth",icon:"🎯",title:"Правда",desc:"Честный вопрос — честный ответ"},
+              {type:"dare",icon:"⚡",title:"Действие",desc:"Сделай это прямо сейчас"},
+              {type:"never",icon:"🙈",title:"Никогда не...",desc:"Признайся — делал(а) или нет"},
+            ].map(g=>(
+              <div key={g.type} onClick={()=>draw(g.type)} style={{
+                display:"flex",alignItems:"center",gap:14,padding:"16px",
+                background:"rgba(255,255,255,.03)",border:"1px solid rgba(193,66,104,.15)",
+                borderRadius:18,cursor:"pointer",transition:"all .2s",
+              }}>
+                <span style={{fontSize:32}}>{g.icon}</span>
+                <div>
+                  <div style={{fontSize:16,fontWeight:600,fontFamily:"var(--d)"}}>{g.title}</div>
+                  <div style={{fontSize:12,color:"var(--ink3)",marginTop:2}}>{g.desc}</div>
+                </div>
+                <span style={{marginLeft:"auto",color:"var(--ink3)"}}>›</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {card&&(
+          <div style={{marginBottom:20}}>
+            <div style={{
+              background:"linear-gradient(135deg,rgba(193,66,104,.12),rgba(184,146,74,.06))",
+              border:"1px solid rgba(193,66,104,.25)",borderRadius:20,
+              padding:"24px 20px",marginBottom:14,textAlign:"center",
+            }}>
+              <div style={{fontSize:28,marginBottom:12}}>
+                {game==="truth"?"🎯":game==="dare"?"⚡":"🙈"}
+              </div>
+              <div style={{fontFamily:"var(--d)",fontSize:18,fontWeight:600,lineHeight:1.4,color:"var(--ink)"}}>
+                {card.q}
+              </div>
+            </div>
+
+            <textarea className="ta" placeholder="Твой ответ…"
+              value={myAns} onChange={e=>setMyAns(e.target.value)}
+              style={{marginBottom:8,minHeight:70}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setCard(null)} style={{
+                flex:1,padding:"10px",background:"rgba(255,255,255,.04)",
+                border:"1px solid rgba(255,255,255,.08)",borderRadius:10,
+                color:"var(--ink3)",cursor:"pointer",fontFamily:"var(--b)"
+              }}>Другой вопрос</button>
+              <button className="fa" disabled={!myAns.trim()} onClick={saveAnswer} style={{flex:2}}>
+                Ответить ✓
+              </button>
+            </div>
+          </div>
+        )}
+
+        {history.length>0&&(
+          <div>
+            <div style={{fontSize:10,fontWeight:600,letterSpacing:".1em",color:"rgba(193,66,104,.6)",textTransform:"uppercase",marginBottom:10}}>
+              История игр
+            </div>
+            {history.slice(0,10).map(h=>(
+              <div key={h.id} style={{
+                background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",
+                borderRadius:14,padding:"12px 14px",marginBottom:8,
+              }}>
+                <div style={{fontSize:11,color:"var(--ink3)",marginBottom:6}}>
+                  {h.type==="truth"?"🎯 Правда":h.type==="dare"?"⚡ Действие":"🙈 Никогда не"}
+                </div>
+                <div style={{fontSize:13,color:"var(--ink2)",marginBottom:8}}>{h.q}</div>
+                {Object.entries(h.answers||{}).map(([who,ans])=>(
+                  <div key={who} style={{fontSize:12,color:"var(--ink3)",marginBottom:4}}>
+                    <span style={{color:"var(--r)"}}>@{who}:</span> {ans}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+function PhotoDaySec({pid, me, partner}){
+  const today=new Date().toISOString().slice(0,10);
+  const[myPhoto,setMyPhoto]=useState(null);
+  const[ptPhoto,setPtPhoto]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const fileRef=useRef(null);
+
+  useEffect(()=>{
+    if(!pid)return;
+    const load=async()=>{
+      const[my,pt]=await Promise.all([
+        db.get(`photo:${n(me)}:${today}`),
+        db.get(`photo:${n(partner)}:${today}`),
+      ]);
+      setMyPhoto(my);setPtPhoto(pt);setLoading(false);
+    };
+    load();
+    const iv=setInterval(load,15000);
+    return()=>clearInterval(iv);
+  },[pid,today]);
+
+  const upload=async(e)=>{
+    const file=e.target.files?.[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onloadend=async()=>{
+      const img=new Image();
+      img.onload=async()=>{
+        const canvas=document.createElement("canvas");
+        const MAX=600;
+        const ratio=Math.min(MAX/img.width,MAX/img.height);
+        canvas.width=img.width*ratio;canvas.height=img.height*ratio;
+        const ctx=canvas.getContext("2d");
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        const b64=canvas.toDataURL("image/jpeg",0.7).split(",")[1];
+        await db.set(`photo:${n(me)}:${today}`,{b64,ts:Date.now(),by:me});
+        setMyPhoto({b64,ts:Date.now(),by:me});
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return(
+    <div className="sec" id="photoday">
+      <div className="sec-in">
+        <span className="brow">Фото дня</span>
+        <h2 className="sh">Покажи <em>свой день</em></h2>
+        <p className="sp">Каждый день одно фото — видите моменты жизни друг друга.</p>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center"}}>@{n(me)}</div>
+            {myPhoto?.b64?(
+              <div style={{position:"relative"}}>
+                <img src={`data:image/jpeg;base64,${myPhoto.b64}`}
+                  style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:16,border:"2px solid rgba(193,66,104,.3)"}}/>
+                <button onClick={()=>fileRef.current?.click()} style={{
+                  position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.6)",
+                  border:"none",borderRadius:999,padding:"4px 8px",color:"#fff",
+                  fontSize:11,cursor:"pointer"
+                }}>Изменить</button>
+              </div>
+            ):(
+              <div onClick={()=>fileRef.current?.click()} style={{
+                aspectRatio:"1",border:"2px dashed rgba(193,66,104,.3)",borderRadius:16,
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                gap:8,cursor:"pointer",background:"rgba(193,66,104,.04)",
+              }}>
+                <span style={{fontSize:32}}>📸</span>
+                <span style={{fontSize:12,color:"var(--ink3)"}}>Добавить фото</span>
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={upload}/>
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center"}}>@{n(partner)}</div>
+            {ptPhoto?.b64?(
+              <img src={`data:image/jpeg;base64,${ptPhoto.b64}`}
+                style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:16,border:"2px solid rgba(255,255,255,.1)"}}/>
+            ):(
+              <div style={{
+                aspectRatio:"1",border:"2px dashed rgba(255,255,255,.08)",borderRadius:16,
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                gap:8,background:"rgba(255,255,255,.02)",
+              }}>
+                <span style={{fontSize:32}}>🌅</span>
+                <span style={{fontSize:12,color:"var(--ink3)"}}>Ждём фото…</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center"}}>
+          Фото обновляются каждый день
+        </div>
       </div>
     </div>
   );
@@ -1805,7 +2165,7 @@ function Onboarding({onDone}){
 }
 
 /* ─── LANDING ─── */
-const SECS=[{id:"hero",l:"Главная"},{id:"today",l:"Сегодня"},{id:"profile",l:"Профиль"},{id:"achievements",l:"Награды"},{id:"mood",l:"Настроение"},{id:"qa",l:"Вопрос"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"},{id:"capsule",l:"Капсула"}];
+const SECS=[{id:"hero",l:"Главная"},{id:"today",l:"Сегодня"},{id:"profile",l:"Профиль"},{id:"achievements",l:"Награды"},{id:"mood",l:"Настроение"},{id:"bodymood",l:"Самочувствие"},{id:"qa",l:"Вопрос"},{id:"games",l:"Игры"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"photoday",l:"Фото дня"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"},{id:"capsule",l:"Капсула"}];
 
 function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const online=useOnline();
@@ -1873,7 +2233,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
     el.scrollIntoView({behavior:"smooth"});
     setTimeout(()=>el.classList.remove("swipe-in-left","swipe-in-right"),300);
   },[active]);
-  const SWIPE_ORDER=["hero","today","profile","achievements","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises","capsule"];
+  const SWIPE_ORDER=["hero","today","profile","achievements","mood","bodymood","qa","games","timer","planner","shop","calendar","moments","photoday","dreams","wishes","travel","map","promises","capsule"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv,"right");},
@@ -1917,7 +2277,11 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="hr"/>
       <section id="mood" ref={el=>sRefs.current.mood=el}><MoodSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
+      <section id="bodymood" ref={el=>sRefs.current.bodymood=el}><BodyMoodSec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
       <section id="qa" ref={el=>sRefs.current.qa=el}><QASec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
+      <section id="games" ref={el=>sRefs.current.games=el}><GamesSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
       <section id="timer" ref={el=>sRefs.current.timer=el} className="sec"><div className="sec-in"><span className="brow">Счётчик любви</span><h2 className="sh">Сколько мы <em>вместе</em></h2><p className="sp">Каждая секунда на счету.</p>{sd?<LoveTimer start={sd}/>:<p style={{fontSize:12,color:"var(--ink3)",marginBottom:20}}>Укажи дату начала ↓</p>}<div className="date-box"><span className="date-lbl">Вместе с</span><input className="date-inp" type="date" value={sd} onChange={e=>{sSD(e.target.value);localStorage.setItem("duo_sd",e.target.value);}}/></div>{sd&&daysT!==null&&<div className="milestones">{milestones.map(ms=><div key={ms.n} className={`ms ${daysT>=ms.n?"hit":""}`}>{daysT>=ms.n?"✓ ":""}{ms.l}</div>)}</div>}</div></section>
 
@@ -1929,6 +2293,8 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <section ref={el=>sRefs.current.calendar=el}><CalSec pid={pid} me={me}/></section>
       <div className="hr"/>
       <section ref={el=>sRefs.current.moments=el}><MomSec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
+      <section id="photoday" ref={el=>sRefs.current.photoday=el}><PhotoDaySec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
       <section ref={el=>sRefs.current.dreams=el}><DreamsSec me={me} partner={partner}/></section>
       <div className="hr"/>
@@ -1966,15 +2332,17 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {kToast&&<div key={kToast.k} className="kiss-toast">💋 <b>{kToast.dur}с</b> — ваш поцелуй</div>}
       {vibe&&<div className="vpanel"><div className="vpanel-t">Отправить вибрацию</div>{VIBES.map(p=><div key={p.id} className="vopt" onClick={()=>sendVibe(p)}><span className="vopt-i">{p.icon}</span><span className="vopt-n">{p.name}</span></div>)}</div>}
       {vibeR&&<VibeRipple key={vibeR.ts} vid={vibeR.id} partner={partner} onDone={()=>sVR(null)}/>}
-      {surp&&surpriseMsg&&<div className="surp-bg" onClick={()=>sSurp(false)}><div className="surp" onClick={e=>e.stopPropagation()}><div className="surp-shimmer"/><span className="surp-em">🌹</span><div className="surp-t">Для тебя</div><div className="surp-msg">"{surpriseMsg}"</div><div className="surp-from">— с любовью, @{n(me)} 💕</div><button className="surp-btn" onClick={()=>sSurp(false)}>Обнять в ответ 🤗</button></div></div>}
+      {surp&&surpriseMsg&&<div className="surp-bg" onClick={()=>sSurp(false)}><div className="surp" onClick={e=>e.stopPropagation()}><div className="surp-shimmer"/><span className="surp-em">🌹</span><div className="surp-t">Для тебя</div><div className="surp-msg">"{surpriseMsg}"</div><div className="surp-from">— с любовью, @{n(partner)} 💕</div><button className="surp-btn" onClick={()=>sSurp(false)}>Обнять в ответ 🤗</button></div></div>}
 
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={m.ts||i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}<div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap"}}>{["❤️","😂","🥺","🔥"].map(r=>(<span key={r} onClick={()=>reactToMsg(m.ts,r)} style={{fontSize:12,cursor:"pointer",padding:"1px 5px",borderRadius:999,background:m.reactions?.[r]?"rgba(193,66,104,.2)":"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.06)"}}>{r}{m.reactions?.[r]?` ${m.reactions[r]}`:""}</span>))}</div></div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots" onTouchStart={e=>e.stopPropagation()} onTouchMove={e=>e.stopPropagation()}>{["hero","today","profile","achievements","mood","qa","timer","planner","shop","calendar","moments","dreams","wishes","travel","map","promises","capsule"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots" onTouchStart={e=>e.stopPropagation()} onTouchMove={e=>e.stopPropagation()}>{["hero","today","profile","achievements","mood","bodymood","qa","games","timer","planner","shop","calendar","moments","photoday","dreams","wishes","travel","map","promises","capsule"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
-        <div className="rib-ava">{n(partner)[0]||"?"}</div>
-        {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
+        <div style={{display:"flex",alignItems:"center",gap:8}} onClick={e=>e.stopPropagation()}>
+          <div className="rib-ava">{n(partner)[0]||"?"}</div>
+          {ptRibMood&&<div className="rib-mood" title={`Настроение @${n(partner)}`}>{ptRibMood}</div>}
+        </div>
         <div className="rsep"/>
         <div className="rbtns">
           <div style={{display:"flex",alignItems:"center",gap:2}}><div className={`rb ${music?"on":""}`} onClick={()=>{toggleMusic();sTrackPicker(false);}} title="Музыка">{music?<MBars/>:TRACKS.find(t=>t.id===currentTrack)?.icon||"🎵"}</div><div className="rb" style={{width:22,height:22,fontSize:9}} onClick={()=>sTrackPicker(p=>!p)} title="Выбор трека">▾</div></div>
@@ -2017,6 +2385,7 @@ export default function App(){
   const[meI,sMeI]=useState("");
   const[ptI,sPtI]=useState("");
   const[surpI,sSurpI]=useState(()=>_ses()?.surp||"");
+  const[partnerSurpMsg,sPartnerSurpMsg]=useState("");
   const[err,sErr]=useState("");const[ca,sCA]=useState(()=>_ses()?.ca||null);const[copied,sCopied]=useState(false);
   const poll=useRef(null);const burst=useRef(null);
 
@@ -2024,6 +2393,7 @@ export default function App(){
   useEffect(()=>{if(username)sMeI(username);},[username]);
   useEffect(()=>{if(startParam&&!ptI)sPtI(startParam);},[startParam]);
   useEffect(()=>()=>{clearInterval(poll.current);clearTimeout(burst.current);if(me)db.del(`p:${n(me)}`);amb.stop();},[me]);
+  useEffect(()=>{if(phase!=="landing"||!me||!partner)return;sPartnerSurpMsg("");db.get(`surp:${pair(me,partner)}`).then(data=>{if(data&&data[n(partner)])sPartnerSurpMsg(data[n(partner)]);});},[phase,me,partner]);
 
   const startPoll=useCallback((myN,ptN)=>{
     const myNorm=n(myN);
@@ -2060,6 +2430,9 @@ export default function App(){
     if(myN===ptN){sErr("Нельзя подключиться к самому себе 😊");return;}
     sErr("");
     const connAt=Date.now();
+    const pid=pair(myN,ptN);
+    const existing=await db.get(`surp:${pid}`).catch(()=>null);
+    await db.set(`surp:${pid}`,{...(existing||{}),[myN]:surpI||""});
     localStorage.setItem("duo_session",JSON.stringify({
       me:myN, partner:ptN, ca:connAt, surp:surpI||""
     }));
@@ -2080,7 +2453,7 @@ export default function App(){
   };
 
   if(showOb)return <Onboarding onDone={doneOb}/>;
-  if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={surpI||_ses()?.surp||""} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
+  if(phase==="landing")return <ErrBound><Landing me={me} partner={partner} surpriseMsg={partnerSurpMsg} connectedAt={ca} tgPhotoUrl={photoUrl} onDisc={disconnect}/></ErrBound>;
   if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
 
   return(
