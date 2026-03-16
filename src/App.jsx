@@ -2059,9 +2059,14 @@ export default function App(){
     if(!myN||!ptN){sErr("Заполни оба поля.");return;}
     if(myN===ptN){sErr("Нельзя подключиться к самому себе 😊");return;}
     sErr("");
-    await saveP(myN,ptN);
-    sPhase("waiting");
-    startPoll(myN,ptN);
+    const connAt=Date.now();
+    localStorage.setItem("duo_session",JSON.stringify({
+      me:myN, partner:ptN, ca:connAt, surp:surpI||""
+    }));
+    sMe(myN);sPt(ptN);sCA(connAt);
+    // Burst анимация сохраняется
+    sPhase("burst");
+    burst.current=setTimeout(()=>sPhase("landing"),3000);
   };
   const disconnect=()=>{
     localStorage.removeItem("duo_session");
