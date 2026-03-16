@@ -1997,8 +1997,8 @@ class ErrBound extends React.Component {
   static getDerivedStateFromError(e){return{err:e};}
   render(){
     if(this.state.err)return(
-      <div style={{color:'red',padding:20,fontSize:12,wordBreak:'break-all'}}>
-        CRASH: {this.state.err.message}<br/>{this.state.err.stack?.slice(0,300)}
+      <div style={{color:'red',padding:20,fontSize:12,wordBreak:'break-all',background:'#000',position:'fixed',inset:0,zIndex:9999,overflow:'auto'}}>
+        CRASH: {this.state.err.message}<br/>{this.state.err.stack?.slice(0,500)}
       </div>
     );
     return this.props.children;
@@ -2084,6 +2084,7 @@ export default function App(){
   if(phase==="burst")return(<div className="burst"><BurstPetals/><div className="burst-ring"><div className="burst-icon">💖</div></div><div className="burst-h">Вы вместе</div><div className="burst-s"><span>@{n(me)}</span> & <span>@{n(partner)}</span></div></div>);
 
   return(
+    <ErrBound>
     <div className="co">
       <div className="co-aura"/>
       <div className="petals"><Petals/></div>
@@ -2132,5 +2133,6 @@ export default function App(){
         )}
       </div>
     </div>
+    </ErrBound>
   );
 }
