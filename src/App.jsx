@@ -129,6 +129,19 @@ class Amb{
   get playing(){return!!(this.audio&&!this.audio.paused);}
 }
 const amb=new Amb();
+const haptic=(type="light")=>{
+  const tg=typeof window!=="undefined"?window.Telegram?.WebApp:null;
+  if(tg?.HapticFeedback){
+    if(type==="light")tg.HapticFeedback.impactOccurred("light");
+    else if(type==="medium")tg.HapticFeedback.impactOccurred("medium");
+    else if(type==="heavy")tg.HapticFeedback.impactOccurred("heavy");
+    else if(type==="success")tg.HapticFeedback.notificationOccurred("success");
+    else if(type==="error")tg.HapticFeedback.notificationOccurred("error");
+  }else if(typeof navigator!=="undefined"&&navigator.vibrate){
+    const pats={light:30,medium:60,heavy:120,success:[50,30,50],error:[100,50,100]};
+    navigator.vibrate(pats[type]||30);
+  }
+};
 function playSound(type){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);const sounds={kiss:{freq:880,type:"sine",dur:.18,vol:.3},react:{freq:660,type:"sine",dur:.12,vol:.25},vibe:{freq:220,type:"sawtooth",dur:.1,vol:.2},chat:{freq:540,type:"sine",dur:.15,vol:.2},music:{freq:440,type:"sine",dur:.2,vol:.25}};const s=sounds[type]||sounds.react;o.type=s.type;o.frequency.setValueAtTime(s.freq,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(s.freq*1.5,ctx.currentTime+s.dur);g.gain.setValueAtTime(s.vol,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+s.dur);o.start();o.stop(ctx.currentTime+s.dur);setTimeout(()=>ctx.close(),500);}catch(e){}}
 
 /* ─── VIBES ─── */
@@ -2331,7 +2344,7 @@ function LovePiano({onClose}){
     setRipples(r=>[...r,{id,emoji:key.emoji}]);
     setTimeout(()=>setRipples(r=>r.filter(x=>x.id!==id)),1000);
     setTimeout(()=>setActive(null),150);
-    if(navigator.vibrate)navigator.vibrate(30);
+    haptic("light");
   };
   return(
     <div style={{
@@ -2446,7 +2459,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       if(d.reaction&&d.reaction.ts>(rid._last||0)){rid._last=d.reaction.ts;const id=++rid.current;sF(p=>[...p,{id,emoji:d.reaction.emoji,x:`${d.reaction.x}%`,y:`${d.reaction.y}%`}]);}
       if(d.msg&&d.msg.ts>lastTs.current){lastTs.current=d.msg.ts;sMsgs(p=>[...p,{...d.msg,from:partner}]);if(!chat)sUnread(u=>u+1);}
       const pk=d.kissing||false;sPK(pk);if(pk&&myKiss&&!kissStart)sKS(d.kissTs||Date.now());
-      if(d.vibe&&d.vibe.ts>lastVT.current){lastVT.current=d.vibe.ts;const pv=VIBES.find(v=>v.id===d.vibe.id);if(pv&&navigator.vibrate)navigator.vibrate(pv.pat);sVR({id:d.vibe.id,ts:d.vibe.ts});}
+      if(d.vibe&&d.vibe.ts>lastVT.current){lastVT.current=d.vibe.ts;const pv=VIBES.find(v=>v.id===d.vibe.id);if(pv)haptic(pv.intensity>=3?"heavy":pv.intensity>=2?"medium":"light");sVR({id:d.vibe.id,ts:d.vibe.ts});}
       // mood ribbon indicator (check every ~10s via counter)
     },1500);
     return()=>clearInterval(iv);
@@ -2477,9 +2490,9 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const reactToMsg=async(ts,emoji)=>{const updated=msgs.map(m=>{if(m.ts!==ts)return m;const cur=m.reactions?.[emoji]||0;return{...m,reactions:{...m.reactions,[emoji]:cur>0?0:1}};});sMsgs(updated);await db.set(`chat:${pid}`,updated);};
   const startRec=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mime=["audio/webm","audio/mp4","audio/ogg"].find(t=>MediaRecorder.isTypeSupported(t))||"";const mr=new MediaRecorder(stream,mime?{mimeType:mime}:{});chunks.current=[];mr.ondataavailable=e=>chunks.current.push(e.data);mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,mime?{type:mime}:{});if(blob.size>10){const dur=(Date.now()-recSt.current)/1000;const reader=new FileReader();reader.onloadend=async()=>{await sendMsg("🎤 Голосовое",reader.result.split(",")[1],dur);};reader.readAsDataURL(blob);}sRec(false);};mr.start();mrRef.current=mr;recSt.current=Date.now();sRec(true);setTimeout(()=>{if(mr.state==="recording")mr.stop();},30000);}catch(e){}};
   const stopRec=()=>{if(mrRef.current?.state==="recording")mrRef.current.stop();};
-  const startKiss=async()=>{playSound("kiss");sMK(true);const ts=Date.now();await flush({kissing:true,kissTs:ts});if(ptKiss)sKS(ts);};
+  const startKiss=async()=>{playSound("kiss");haptic("medium");sMK(true);const ts=Date.now();await flush({kissing:true,kissTs:ts});if(ptKiss)sKS(ts);};
   const endKiss=async()=>{if(!myKiss)return;const dur=kissStart?Math.floor((Date.now()-kissStart)/1000):null;sMK(false);sKS(null);await flush({kissing:false});if(ptKiss&&dur&&dur>0){const k=++kTK.current;sKT({k,dur});setTimeout(()=>sKT(t=>t?.k===k?null:t),4500);}};
-  const sendVibe=async p=>{sVibe(false);if(navigator.vibrate){const repeats=p.intensity||1;const pattern=[...p.pat];for(let i=1;i<repeats;i++)pattern.push(100,...p.pat);navigator.vibrate(pattern);}playSound("vibe");const s=await loadSt(me)||{};await saveSt(me,{...s,vibe:{id:p.id,ts:Date.now()}});};
+  const sendVibe=async p=>{sVibe(false);haptic(p.intensity>=3?"heavy":p.intensity>=2?"medium":"light");playSound("vibe");const s=await loadSt(me)||{};await saveSt(me,{...s,vibe:{id:p.id,ts:Date.now()}});};
   const toggleMusic=()=>{if(amb.playing){amb.stop();sMusic(false);}else{amb.start(currentTrack);sMusic(true);playSound("music");}};
   const switchTrack=id=>{amb.switchTo(id);sCurrentTrack(id);sMusic(true);sTrackPicker(false);playSound("music");};
 
@@ -2644,6 +2657,7 @@ export default function App(){
             me:myN, partner:ptN, ca:connAt, surp:surpI||""
           }));
           sMe(myN);sPt(ptN);sCA(connAt);
+          haptic("success");
           sPhase("burst");
           burst.current=setTimeout(()=>sPhase("landing"),3000);
         }
@@ -2659,8 +2673,8 @@ export default function App(){
   const connect=async()=>{
     const myN=n(meI);
     const ptN=n(ptI);
-    if(!myN||!ptN){sErr("Заполни оба поля.");return;}
-    if(myN===ptN){sErr("Нельзя подключиться к самому себе 😊");return;}
+    if(!myN||!ptN){haptic("error");sErr("Заполни оба поля.");return;}
+    if(myN===ptN){haptic("error");sErr("Нельзя подключиться к самому себе 😊");return;}
     sErr("");
     const connAt=Date.now();
     const pid=pair(myN,ptN);
@@ -2671,6 +2685,7 @@ export default function App(){
     }));
     sMe(myN);sPt(ptN);sCA(connAt);
     // Burst анимация сохраняется
+    haptic("success");
     sPhase("burst");
     burst.current=setTimeout(()=>sPhase("landing"),3000);
   };
