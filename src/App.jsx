@@ -312,6 +312,8 @@ html,body,#root{height:100%;background:var(--c0);color:var(--ink);font-family:va
 /* react panel */
 .rpanel{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:901;display:flex;gap:4px;background:rgba(14,12,24,.95);border:1px solid rgba(193,66,104,.2);border-radius:999px;padding:8px 14px;backdrop-filter:blur(24px);box-shadow:0 8px 32px rgba(0,0,0,.5);animation:up .22s var(--e1) both;}
 .stickers{position:fixed;bottom:80px;right:12px;z-index:910;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:12px;background:rgba(14,12,24,.97);border:1px solid rgba(255,255,255,.08);border-radius:20px;backdrop-filter:blur(32px);box-shadow:0 8px 40px rgba(0,0,0,.8);animation:up .25s var(--e1) both;max-width:220px;}
+.piano-key{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+.ribbon,.rb,.sticker,.piano-key{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .sticker{font-size:28px;cursor:pointer;text-align:center;padding:4px;border-radius:10px;transition:transform .15s var(--e2),background .15s;}
 .sticker:active{transform:scale(1.3);background:rgba(193,66,104,.15);}
 .sticker-fly{position:fixed;z-index:999;font-size:36px;pointer-events:none;animation:stickerFly .9s var(--e1) forwards;}
@@ -2375,6 +2377,7 @@ function LovePiano({onClose}){
       <div style={{display:"flex",gap:4}}>
         {PIANO_KEYS.map(key=>(
           <div key={key.note}
+            className="piano-key"
             onMouseDown={()=>press(key)}
             onTouchStart={()=>press(key)}
             style={{
@@ -2501,7 +2504,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const endKiss=async()=>{if(!myKiss)return;const dur=kissStart?Math.floor((Date.now()-kissStart)/1000):null;sMK(false);sKS(null);await flush({kissing:false});if(ptKiss&&dur&&dur>0){const k=++kTK.current;sKT({k,dur});setTimeout(()=>sKT(t=>t?.k===k?null:t),4500);}};
   const sendVibe=async p=>{sVibe(false);haptic(p.intensity>=3?"heavy":p.intensity>=2?"medium":"light");playSound("vibe");const s=await loadSt(me)||{};await saveSt(me,{...s,vibe:{id:p.id,ts:Date.now()}});};
   const toggleMusic=()=>{if(amb.playing){amb.stop();sMusic(false);}else{amb.start(currentTrack);sMusic(true);playSound("music");}};
-  const switchTrack=id=>{amb.switchTo(id);sCurrentTrack(id);sMusic(true);sTrackPicker(false);playSound("music");};
+  const switchTrack=id=>{sCurrentTrack(id);sTrackPicker(false);amb.start(id);sMusic(true);playSound("music");};
 
   const ghostTop=pSc!==null?`calc(${pSc*100}% - 14px)`:null;
   const msSince=sd?Date.now()-new Date(sd).getTime():0;
