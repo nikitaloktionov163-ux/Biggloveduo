@@ -73,12 +73,16 @@ const loadSt=async u=>{const d=await db.get(`st:${n(u)}`);return d&&Date.now()-d
 /* ─── AMBIENT ─── */
 const MUSIC_BASE=`${import.meta.env.BASE_URL}music`;
 const TRACKS=[
-  {id:"1",name:"Say Yes to Heaven",icon:"🌙",src:`${MUSIC_BASE}/t1.mp3`},
-  {id:"2",name:"Summertime Sadness",icon:"🌹",src:`${MUSIC_BASE}/t2.mp3`},
-  {id:"3",name:"Video Games",icon:"💕",src:`${MUSIC_BASE}/t3.mp3`},
-  {id:"4",name:"Young & Beautiful",icon:"✨",src:`${MUSIC_BASE}/t4.mp3`},
-  {id:"5",name:"Born to Die",icon:"🥀",src:`${MUSIC_BASE}/t5.mp3`},
-  {id:"6",name:"Paradise",icon:"🌊",src:`${MUSIC_BASE}/t6.mp3`},
+  {id:"1",name:"Piano Beautiful",icon:"🌙",src:`${MUSIC_BASE}/t1.mp3`},
+  {id:"2",name:"Love Unfolding",icon:"🌹",src:`${MUSIC_BASE}/t2.mp3`},
+  {id:"3",name:"Dreamy Horizon",icon:"💕",src:`${MUSIC_BASE}/t3.mp3`},
+  {id:"4",name:"Tranquil Affection",icon:"✨",src:`${MUSIC_BASE}/t4.mp3`},
+  {id:"5",name:"Evening Serenade",icon:"🥀",src:`${MUSIC_BASE}/t5.mp3`},
+  {id:"6",name:"Harmony in Love",icon:"🌊",src:`${MUSIC_BASE}/t6.mp3`},
+  {id:"7",name:"Gentle Reflections",icon:"💫",src:`${MUSIC_BASE}/t7.mp3`},
+  {id:"8",name:"Moonlit Waltz",icon:"🌸",src:`${MUSIC_BASE}/t8.mp3`},
+  {id:"9",name:"Quiet Glow",icon:"🦋",src:`${MUSIC_BASE}/t9.mp3`},
+  {id:"10",name:"Sky Serenade",icon:"💎",src:`${MUSIC_BASE}/t10.mp3`},
 ];
 
 class Amb{
@@ -1624,6 +1628,9 @@ function BodyMoodSec({pid, me, partner}){
           <textarea className="ta" placeholder="Заметка (болит голова, устал(а)…)" value={note}
             onChange={e=>setNote(e.target.value)} onBlur={saveNote}
             style={{marginTop:8,minHeight:50}}/>
+          <button className="fa" onClick={saveNote} style={{marginTop:6,width:"100%"}}>
+            Сохранить заметку
+          </button>
         </div>
 
         <div style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:16,padding:"14px 16px"}}>
@@ -1750,7 +1757,7 @@ function GamesSec({pid, me, partner}){
     if(!myAns.trim())return;
     const newAns={...answers,[n(me)]:myAns.trim()};
     setAnswers(newAns);
-    const entry={id:Date.now(),q:card.q,type:game,answers:newAns,ts:Date.now()};
+    const entry={id:`${Date.now()}-${Math.random().toString(36).slice(2)}`,q:card.q,type:game,answers:newAns,ts:Date.now()};
     const newH=[entry,...history].slice(0,50);
     setHistory(newH);
     await db.set(`games:${pid}`,newH);
@@ -1875,12 +1882,12 @@ function PhotoDaySec({pid, me, partner}){
       const img=new Image();
       img.onload=async()=>{
         const canvas=document.createElement("canvas");
-        const MAX=600;
+        const MAX=400;
         const ratio=Math.min(MAX/img.width,MAX/img.height);
         canvas.width=img.width*ratio;canvas.height=img.height*ratio;
         const ctx=canvas.getContext("2d");
         ctx.drawImage(img,0,0,canvas.width,canvas.height);
-        const b64=canvas.toDataURL("image/jpeg",0.7).split(",")[1];
+        const b64=canvas.toDataURL("image/jpeg",0.5).split(",")[1];
         await db.set(`photo:${n(me)}:${today}`,{b64,ts:Date.now(),by:me});
         setMyPhoto({b64,ts:Date.now(),by:me});
         await notifyPartner(partner,`добавил(а) фото дня 🌅`,"🌅");
@@ -2369,7 +2376,7 @@ function LovePiano({onClose}){
         {PIANO_KEYS.map(key=>(
           <div key={key.note}
             onMouseDown={()=>press(key)}
-            onTouchStart={e=>{e.preventDefault();press(key);}}
+            onTouchStart={()=>press(key)}
             style={{
               flex:1,height:72,borderRadius:12,cursor:"pointer",
               background:active===key.note?key.color:"rgba(255,255,255,.06)",
@@ -2392,7 +2399,7 @@ function LovePiano({onClose}){
           {name:"G",notes:[196,246.9,293.7],icon:"✨"},
         ].map(chord=>(
           <button key={chord.name} onMouseDown={()=>chord.notes.forEach((f,i)=>setTimeout(()=>playPianoNote(f),i*30))}
-            onTouchStart={e=>{e.preventDefault();chord.notes.forEach((f,i)=>setTimeout(()=>playPianoNote(f),i*30));}}
+            onTouchStart={()=>chord.notes.forEach((f,i)=>setTimeout(()=>playPianoNote(f),i*30))}
             style={{
               flex:1,padding:"8px 4px",borderRadius:10,cursor:"pointer",fontFamily:"var(--b)",
               background:"rgba(193,66,104,.1)",border:"1px solid rgba(193,66,104,.2)",
@@ -2477,7 +2484,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
     el.scrollIntoView({behavior:"smooth"});
     setTimeout(()=>el.classList.remove("swipe-in-left","swipe-in-right"),300);
   },[active]);
-  const SWIPE_ORDER=["hero","today","profile","achievements","mood","bodymood","qa","games","timer","planner","shop","calendar","moments","photoday","dreams","wishes","travel","map","promises","capsule"];
+  const SWIPE_ORDER=["hero","today","profile","achievements","mood","bodymood","qa","games","timer","planner","shop","calendar","photoday","moments","dreams","wishes","travel","map","promises","capsule"];
   const swipeIdx=SWIPE_ORDER.indexOf(active);
   const swipe=useSwipe(
     ()=>{const pv=SWIPE_ORDER[swipeIdx-1];if(pv)scrollTo(pv,"right");},
@@ -2536,9 +2543,9 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="hr"/>
       <section ref={el=>sRefs.current.calendar=el}><CalSec pid={pid} me={me}/></section>
       <div className="hr"/>
-      <section ref={el=>sRefs.current.moments=el}><MomSec pid={pid} me={me} partner={partner}/></section>
-      <div className="hr"/>
       <section id="photoday" ref={el=>sRefs.current.photoday=el}><PhotoDaySec pid={pid} me={me} partner={partner}/></section>
+      <div className="hr"/>
+      <section ref={el=>sRefs.current.moments=el}><MomSec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
       <section ref={el=>sRefs.current.dreams=el}><DreamsSec me={me} partner={partner}/></section>
       <div className="hr"/>
@@ -2581,7 +2588,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       {chat&&<div className="chat"><div className="chat-hd"><div><div className="chat-ht">💬 @{n(partner)}</div><div className="chat-hs">Только вы двое</div></div><div className="chat-xb" onClick={()=>sChat(false)}>✕</div></div><div className="chat-body">{msgs.length===0&&<div className="chat-empty">Напиши первым 🌹</div>}{msgs.map((m,i)=><div key={m.ts||i} className={`cbbl ${m.from===me?"me":"them"}`}>{m.from!==me&&<div className="cbbl-who">{n(m.from)}</div>}{m.vd?<VoicePlayer data={m.vd} dur={m.vdur}/>:<div>{m.text}</div>}<div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap"}}>{["❤️","😂","🥺","🔥"].map(r=>(<span key={r} onClick={()=>reactToMsg(m.ts,r)} style={{fontSize:12,cursor:"pointer",padding:"1px 5px",borderRadius:999,background:m.reactions?.[r]?"rgba(193,66,104,.2)":"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.06)"}}>{r}{m.reactions?.[r]?` ${m.reactions[r]}`:""}</span>))}</div></div>)}<div ref={msEnd}/></div><div className="chat-row"><button className={`cmic ${isRec?"rec":""}`} onMouseDown={startRec} onMouseUp={stopRec} onTouchStart={startRec} onTouchEnd={stopRec}>🎤</button><input className="cinp" placeholder="Напиши…" value={cinp} onChange={e=>sCInp(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}/><button className="csend" disabled={!cinp.trim()} onClick={()=>{if(cinp.trim()){sendMsg(cinp.trim());sCInp("");}}}>→</button></div></div>}
 
       {/* RIBBON */}
-      <div className="swipe-dots" onTouchStart={e=>e.stopPropagation()} onTouchMove={e=>e.stopPropagation()}>{["hero","today","profile","achievements","mood","bodymood","qa","games","timer","planner","shop","calendar","moments","photoday","dreams","wishes","travel","map","promises","capsule"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
+      <div className="swipe-dots" onTouchStart={e=>e.stopPropagation()} onTouchMove={e=>e.stopPropagation()}>{["hero","today","profile","achievements","mood","bodymood","qa","games","timer","planner","shop","calendar","photoday","moments","dreams","wishes","travel","map","promises","capsule"].map(id=><div key={id} className={`swipe-dot ${active===id?"on":""}`}/>)}</div>
       <div className="ribbon">
         <div style={{display:"flex",alignItems:"center",gap:8}} onClick={e=>e.stopPropagation()}>
           <div className="rib-ava">{n(partner)[0]||"?"}</div>
@@ -2740,16 +2747,6 @@ export default function App(){
             </div>
             {err&&<p className="err">{err}</p>}
             <button className="btn-main" disabled={!meI.trim()||!ptI.trim()} onClick={connect}>Войти вместе 💕</button>
-            <button className="btn-main" style={{marginTop:8,opacity:.55,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"var(--ink3)"}}
-              onClick={()=>{
-                const myN=(meI.trim()||"test_me");
-                const ptN="partner_test";
-                const connAt=Date.now();
-                localStorage.setItem("duo_session",JSON.stringify({me:myN,partner:ptN,ca:connAt}));
-                sMe(myN);sPt(ptN);sCA(connAt);sPhase("landing");
-              }}>
-              🧪 Войти без партнёра (тест)
-            </button>
           </>
         )}
       </div>
