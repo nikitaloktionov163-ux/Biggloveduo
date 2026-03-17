@@ -1082,7 +1082,7 @@ function CalSec({pid,me}){
 const MOM_EM=["🌹","💕","✨","😍","🥰","💋","🫶","🌙","☕","🎵","🌊","🏔️","💌","🎉","🌸","🤍"];
 const TAGS=[{id:"happy",l:"Счастье"},{id:"tender",l:"Нежность"},{id:"funny",l:"Смешно"},{id:"important",l:"Важно"}];
 function MemoryOverlay({item,onClose,onAnother}){if(!item)return null;const tagLbl=TAGS.find(t=>t.id===item.tag)?.l||"Важно";return(<div className="mem-overlay" onClick={onClose}><div className="mem-card" onClick={e=>e.stopPropagation()}><div className="mem-em">{item.em}</div><div className="mem-tag-chip">{tagLbl}</div><div className="mem-text">{item.txt}</div>{item.by&&<div className="mem-by">@{n(item.by)}</div>}{item.ts&&<div className="mem-date">{new Date(item.ts).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"})}</div>}<button className="mem-close" onClick={onClose}>✕</button><button className="mem-another" onClick={onAnother}>Ещё одно 💫</button></div></div>);}
-function MomSec({pid,me,partner}){const{data:items,setData:sI,loading,refresh}=useSync(`mom:${pid}`,[],5000);const[surprise,sSurprise]=useState(null);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};await refresh([m,...items]);notifyPartner(partner,`@${n(me)} добавил(а) воспоминание: «${txt.slice(0,40)}»`,"🌹");sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});const showAnother=()=>{if(items.length<2)return;let idx;do{idx=Math.floor(Math.random()*items.length);}while(items[idx].id===surprise?.id);sSurprise(items[idx]);};if(loading)return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>{items.length>0&&<div style={{textAlign:"center",marginBottom:20}}><button className="surprise-btn" onClick={()=>sSurprise(items[Math.floor(Math.random()*items.length)])}>💫 Удиви меня</button></div>}<div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div>{surprise&&<MemoryOverlay item={surprise} onClose={()=>sSurprise(null)} onAnother={showAnother}/>}</div></div>);}
+function MomSec({pid,me,partner}){const{data:items,setData:sI,loading,refresh}=useSync(`mom:${pid}`,[],5000);const[surprise,sSurprise]=useState(null);const[txt,sT]=useState("");const[em,sE]=useState("🌹");const[tag,sTag]=useState("happy");const add=async()=>{if(!txt.trim())return;const m={id:Date.now(),txt:txt.trim(),em,tag,by:me,ts:Date.now()};await refresh([m,...items]);await notifyPartner(partner,`добавил(а) воспоминание 🌹`,"🌹");sT("");};const fmt=ts=>new Date(ts).toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"});const showAnother=()=>{if(items.length<2)return;let idx;do{idx=Math.floor(Math.random()*items.length);}while(items[idx].id===surprise?.id);sSurprise(items[idx]);};if(loading)return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="moments" style={{background:"rgba(255,255,255,.01)"}}><div className="sec-in"><span className="brow">Воспоминания</span><h2 className="sh">Моменты, <em>которые остаются</em></h2><p className="sp">Ваш личный архив — первое свидание, смешные случаи, нежные слова.</p>{items.length>0&&<div style={{textAlign:"center",marginBottom:20}}><button className="surprise-btn" onClick={()=>sSurprise(items[Math.floor(Math.random()*items.length)])}>💫 Удиви меня</button></div>}<div className="form"><div className="ep">{MOM_EM.map(e=><span key={e} className={`eo ${em===e?"s":""}`} onClick={()=>sE(e)}>{e}</span>)}</div><div className="cp">{TAGS.map(t=><div key={t.id} className={`copt chip-${t.id} ${tag===t.id?"s":""}`} onClick={()=>sTag(t.id)}>{t.l}</div>)}</div><textarea className="ta2" placeholder="Запиши момент…" value={txt} onChange={e=>sT(e.target.value)}/><div className="row" style={{justifyContent:"flex-end"}}><button className="fa" disabled={!txt.trim()} onClick={add}>Сохранить</button></div></div><div className="grid">{items.length===0&&<div className="empty">Сохраните первый момент 🌹</div>}{items.map(m=><div key={m.id} className="card"><div style={{fontSize:17,marginBottom:6}}>{m.em}</div><div className="card-top"><span className="card-meta" style={{color:"rgba(193,66,104,.6)"}}>{n(m.by)}</span><span style={{fontSize:9,color:"var(--ink3)"}}>{fmt(m.ts)}</span></div><div className="card-t" style={{fontWeight:400,fontSize:13}}>{m.txt}</div>{m.tag&&<span className={`card-chip chip-${m.tag}`}>{TAGS.find(t=>t.id===m.tag)?.l}</span>}</div>)}</div>{surprise&&<MemoryOverlay item={surprise} onClose={()=>sSurprise(null)} onAnother={showAnother}/>}</div></div>);}
 
 function DreamsSec({me,partner}){const{data:my,setData:sMy,loading:loadMy,refresh:refreshMy}=useSync(`drm:${n(me)}`,[],7000);const{data:pt,setData:sPt,loading:loadPt}=useSync(`drm:${n(partner)}`,[],7000);const[inp,sI]=useState("");const add=async()=>{if(!inp.trim())return;await refreshMy([...my,{id:Date.now(),t:inp.trim(),done:false}]);sI("");};const toggle=async id=>{await refreshMy(my.map(d=>d.id===id?{...d,done:!d.done}:d));};const Col=({title,em,items,isMe})=><div className="dcol"><div className="dcol-h"><span>{em}</span>{title}</div>{items.length===0&&<p className="empty" style={{padding:"8px 0",gridColumn:"auto"}}>{isMe?"Добавь свою первую мечту…":"Мечты пока не добавлены…"}</p>}{items.map(d=><div key={d.id} className="di">{isMe?<div className={`dchk ${d.done?"ok":""}`} onClick={()=>toggle(d.id)}>{d.done&&<svg width="8" height="6"><path d="M1 3L3 5 7 1" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>  </svg>}</div>:<span style={{fontSize:12,flexShrink:0,marginTop:1}}>{d.done?"✅":"✨"}</span>}<span className={`di-txt ${d.done?"di-done":""}`}>{d.t}</span></div>)}{isMe&&<div className="dadd"><input className="fi" placeholder="Добавить мечту…" value={inp} onChange={e=>sI(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button className="fa" disabled={!inp.trim()} onClick={add} style={{padding:"9px 13px"}}>+</button></div>}</div>;const loading=loadMy||loadPt;if(loading)return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div style={{marginTop:24}}><SkeletonCards count={3}/></div></div></div>);return(<div className="sec" id="dreams"><div className="sec-in"><span className="brow">Мечты</span><h2 className="sh">То, о чём <em>мы мечтаем</em></h2><p className="sp">Каждый пишет своё — и оба видят мечты друг друга. Отмечай выполненные.</p><div className="dcols"><Col title={`@${n(me)}`} em="🌟" items={my} isMe={true}/><Col title={`@${n(partner)}`} em="💫" items={pt} isMe={false}/></div></div></div>);}
 
@@ -1092,7 +1092,7 @@ function WishesSec({pid,me,partner}){
   const sortedWishes=(items||[]).slice().sort((a,b)=>{const p={high:0,med:1,low:2};return (p[a.pr]??1)-(p[b.pr]??1);});
   const[filter,sFilter]=useState("all");
   const[t,sTi]=useState("");const[d,sD]=useState("");const[em,sE]=useState("🎁");const[pr,sPr]=useState("med");
-  const add=async()=>{if(!t.trim())return;const w={id:Date.now(),t:t.trim(),d:d.trim(),em,pr,by:me,done:false,doneBy:null};await refresh([w,...(items||[])]);notifyPartner(partner,`@${n(me)} добавил(а) желание: «${t.slice(0,40)}»`,"🎁");sTi("");sD("");};
+  const add=async()=>{if(!t.trim())return;const w={id:Date.now(),t:t.trim(),d:d.trim(),em,pr,by:me,done:false,doneBy:null};await refresh([w,...(items||[])]);await notifyPartner(partner,`добавил(а) желание 🎁`,"🎁");sTi("");sD("");};
   const fulfill=async id=>{await refresh((items||[]).map(w=>w.id===id?{...w,done:true,doneBy:me}:w));};
   const filtered=sortedWishes.filter(w=>{if(filter==="mine")return n(w.by)===n(me);if(filter==="partner")return n(w.by)!==n(me);if(filter==="done")return w.done;return true;});
   const prl={high:"🔥 Топ-желание",med:"💫 Хочу",low:"🌿 Когда-нибудь"};
@@ -1123,7 +1123,7 @@ function PromisesSec({pid,me,partner}){
     if(!inp.trim())return;
     const updated=[...displayItems,{id:Date.now(),em:selEm,t:inp.trim(),by:me,done:false,doneBy:null}];
     await save(updated);
-    if(partner)notifyPartner(partner,`@${n(me)} добавил(а) обещание`,"💌");
+    if(partner)await notifyPartner(partner,`добавил(а) обещание 💌`,"💌");
     sIn("");
   };
 
@@ -1273,67 +1273,185 @@ function CapsuleSec({pid,me}){
 }
 
 /* ─── KISS COUNTER ─── */
-function ProfileSec({pid,me,partner,daysT,tgPhotoUrl,theme,applyTheme,appTheme,toggleAppTheme}){
-  const c=coll("prof",pid);
-  const[data,sData]=useState(null);
-  const[editing,sEditing]=useState(false);
-  const[bioInp,sBio]=useState("");
-  const[sdInp,sSd]=useState("");
-  useEffect(()=>{c.load().then(d=>{if(d&&d.bio!==undefined){sData(d);sBio(d.bio||"");sSd(d.startDate||"");}});},[]);
-  useEffect(()=>{const iv=setInterval(()=>c.load().then(d=>{if(d&&d.bio!==undefined)sData(d);}),30000);return()=>clearInterval(iv);},[]);
-  const save=async()=>{const upd={bio:bioInp.trim(),startDate:sdInp,updBy:me};sData(upd);await c.save(upd);if(sdInp)localStorage.setItem("duo_sd",sdInp);sEditing(false);};
-  const bio=data?.bio||"";
-  const startDate=data?.startDate||localStorage.getItem("duo_sd")||"";
-  const since=startDate?new Date(startDate).toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"}):"";
-  const meInitial=(n(me)[0]||"?").toUpperCase();
-  const ptInitial=(n(partner)[0]||"?").toUpperCase();
+const COVER_GRADIENTS=[
+  {id:"rose",css:"linear-gradient(135deg,#c14268,#7a1f3d)",name:"Роза"},
+  {id:"gold",css:"linear-gradient(135deg,#b8924a,#7a5c1e)",name:"Золото"},
+  {id:"ocean",css:"linear-gradient(135deg,#4ab8c1,#1e6a7a)",name:"Океан"},
+  {id:"violet",css:"linear-gradient(135deg,#8b5cf6,#4c1d95)",name:"Фиолет"},
+  {id:"sunset",css:"linear-gradient(135deg,#f97316,#c14268)",name:"Закат"},
+  {id:"mint",css:"linear-gradient(135deg,#35c97e,#1e7a4a)",name:"Мята"},
+  {id:"midnight",css:"linear-gradient(135deg,#1e1b4b,#312e81)",name:"Полночь"},
+  {id:"sakura",css:"linear-gradient(135deg,#f9a8d4,#c14268)",name:"Сакура"},
+];
+const PAIR_STATUSES=[
+  "влюблены 💕","вместе навсегда 🌹","лучшие друзья ✨",
+  "неразлучны 🫶","в своём мире 🌙","счастливы вместе 💖",
+  "нас двое 🔐","одна команда 💫",
+];
+function ProfileSec({pid,me,partner,connectedAt,tgPhotoUrl,theme,applyTheme}){
+  const[prof,sProf]=useState({bio:"",startDate:""});
+  const[cover,setCover]=useState("rose");
+  const[status,setStatus]=useState("");
+  const[customStatus,setCustomStatus]=useState("");
+  const[editBio,sEB]=useState(false);
+  const[bio,sBio]=useState("");
+
+  useEffect(()=>{
+    if(!pid)return;
+    const load=async()=>{
+      const[p,t,s]=await Promise.all([
+        db.get(`prof:${pid}`),
+        db.get(`theme:${pid}`),
+        db.get(`style:${pid}`),
+      ]);
+      if(p){sProf(p);sBio(p.bio||"");}
+      if(t)applyTheme(t);
+      if(s){setCover(s.cover||"rose");setStatus(s.status||"");setCustomStatus(s.customStatus||"");}
+    };
+    load();
+  },[pid,applyTheme]);
+
+  const days=connectedAt?Math.floor((Date.now()-connectedAt)/86400000):0;
+
+  const saveCover=async(id)=>{
+    setCover(id);
+    const s=await db.get(`style:${pid}`)||{};
+    await db.set(`style:${pid}`,{...s,cover:id});
+  };
+
+  const saveStatus=async(s,cs="")=>{
+    setStatus(s);setCustomStatus(cs);
+    const st=await db.get(`style:${pid}`)||{};
+    await db.set(`style:${pid}`,{...st,status:s,customStatus:cs});
+  };
+
+  const saveBio=async()=>{
+    const u={...prof,bio};
+    sProf(u);await db.set(`prof:${pid}`,u);sEB(false);
+  };
+
+  const cv=COVER_GRADIENTS.find(g=>g.id===cover)||COVER_GRADIENTS[0];
+  const displayStatus=customStatus||status;
+
   return(
     <div className="sec" id="profile">
-      <div className="sec-in">
-        <span className="brow">Профиль пары</span>
-        <h2 className="sh"><em>Ваша</em> история</h2>
-        {/* Theme switcher */}
-        <div style={{display:"flex",gap:10,justifyContent:"center",margin:"20px 0"}}>
-          {[
-            {id:"midnight",c:"#c14268",label:"Ночь"},
-            {id:"blush",c:"#e8748a",label:"Розовый"},
-            {id:"golden",c:"#b8924a",label:"Золото"},
-            {id:"ocean",c:"#4ab8c1",label:"Океан"},
-          ].map(t=>(
-            <div key={t.id} onClick={()=>applyTheme(t.id)}
-              title={t.label}
-              style={{width:28,height:28,borderRadius:"50%",background:t.c,cursor:"pointer",
-                border:`2px solid ${theme===t.id?"rgba(255,255,255,.8)":"transparent"}`,
-                transition:"transform .2s,border .2s",transform:theme===t.id?"scale(1.2)":"scale(1)"}}/>
-          ))}
-        </div>
-        {toggleAppTheme&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderTop:"1px solid rgba(255,255,255,.05)"}}><span style={{fontSize:13,color:"var(--ink2)"}}>Тема оформления</span><div onClick={toggleAppTheme} style={{width:48,height:26,borderRadius:13,background:appTheme==="dark"?"rgba(193,66,104,.3)":"rgba(255,200,0,.3)",border:"1px solid rgba(255,255,255,.1)",position:"relative",cursor:"pointer",transition:"background .2s"}}><div style={{position:"absolute",top:3,left:appTheme==="dark"?3:23,width:18,height:18,borderRadius:"50%",background:appTheme==="dark"?"#c14268":"#ffcc00",transition:"left .2s",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>{appTheme==="dark"?"🌙":"☀️"}</div></div></div>}
-        <div className="prof-wrap">
-          <div className="prof-avs">
-            {tgPhotoUrl?<img className="prof-av" src={tgPhotoUrl} alt={me}/>:<div className="prof-av prof-av-me">{meInitial}</div>}
-            <span className="prof-heart">💕</span>
-            <div className="prof-av prof-av-pt">{ptInitial}</div>
-          </div>
-          <div className="prof-names"><span>@{n(me)}</span><span>@{n(partner)}</span></div>
-          {since&&<div className="prof-since">Вместе с <b>{since}</b></div>}
-          {daysT!==null&&daysT>0&&<div className="prof-stats">
-            <div><div className="prof-stat-n">{daysT}</div><div className="prof-stat-l">дней</div></div>
-            <div><div className="prof-stat-n">{Math.floor(daysT/7)}</div><div className="prof-stat-l">недель</div></div>
-            <div><div className="prof-stat-n">{Math.floor(daysT/30)}</div><div className="prof-stat-l">месяцев</div></div>
-          </div>}
-          {bio&&!editing&&<div className="prof-bio">"{bio}"</div>}
-          {!editing&&<button className="prof-edit-btn" onClick={()=>sEditing(true)}>✏️ {bio?"Редактировать":"Добавить описание"}</button>}
-          {editing&&<div className="prof-form">
-            <label className="label">Начало отношений</label>
-            <input className="fi fi-date" type="date" value={sdInp} onChange={e=>sSd(e.target.value)}/>
-            <label className="label">О вас двоих</label>
-            <textarea className="ta2" placeholder="Как вы познакомились, что вас объединяет…" value={bioInp} onChange={e=>sBio(e.target.value.slice(0,120))} rows={3}/>
-            <div className="prof-char">{bioInp.length}/120</div>
-            <div className="row" style={{justifyContent:"flex-end",gap:6}}>
-              <button className="prof-edit-btn" onClick={()=>sEditing(false)}>Отмена</button>
-              <button className="fa" onClick={save}>Сохранить</button>
+      <div className="sec-in" style={{padding:0}}>
+        <div style={{
+          height:160,background:cv.css,position:"relative",
+          borderRadius:"0 0 32px 32px",marginBottom:60,
+          overflow:"hidden",
+        }}>
+          <div style={{position:"absolute",inset:0,opacity:.15,backgroundImage:"radial-gradient(circle,rgba(255,255,255,.4) 1px,transparent 1px)",backgroundSize:"20px 20px"}}/>
+
+          <div style={{position:"absolute",bottom:-44,left:"50%",transform:"translateX(-50%)",display:"flex",gap:0,alignItems:"flex-end"}}>
+            <div style={{width:80,height:80,borderRadius:"50%",border:"3px solid var(--c0)",background:"var(--c2)",overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,.4)",zIndex:2}}>
+              {tgPhotoUrl
+                ?<img src={tgPhotoUrl} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,fontFamily:"var(--d)",color:"var(--ink)"}}>{n(me)[0]?.toUpperCase()}</div>
+              }
             </div>
-          </div>}
+            <div style={{width:56,height:56,borderRadius:"50%",border:"3px solid var(--c0)",background:"var(--c3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontFamily:"var(--d)",color:"var(--ink3)",marginLeft:-12,zIndex:1}}>
+              {n(partner)[0]?.toUpperCase()}
+            </div>
+          </div>
+        </div>
+
+        <div style={{padding:"0 20px 32px"}}>
+          <div style={{textAlign:"center",marginBottom:16}}>
+            <div style={{fontFamily:"var(--d)",fontSize:20,fontWeight:700}}>
+              @{n(me)} <span style={{color:"var(--r)"}}>✦</span> @{n(partner)}
+            </div>
+            {displayStatus&&(
+              <div style={{fontSize:13,color:"var(--ink3)",marginTop:4}}>{displayStatus}</div>
+            )}
+            <div style={{fontSize:12,color:"var(--r)",marginTop:6}}>🌹 {days} дней вместе</div>
+          </div>
+
+          <div style={{marginBottom:20}}>
+            {!editBio?(
+              <div onClick={()=>sEB(true)} style={{
+                background:"rgba(255,255,255,.03)",border:"1px dashed rgba(255,255,255,.1)",
+                borderRadius:14,padding:"12px 16px",cursor:"pointer",minHeight:48,
+                fontSize:13,color:bio?"var(--ink2)":"var(--ink3)",lineHeight:1.6,
+              }}>
+                {bio||"Нажми чтобы добавить описание вашей пары…"}
+              </div>
+            ):(
+              <div>
+                <textarea className="ta" value={bio} onChange={e=>sBio(e.target.value)} style={{marginBottom:8}}/>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>{sBio(prof.bio||"");sEB(false);}} style={{flex:1,padding:"9px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,color:"var(--ink3)",cursor:"pointer",fontFamily:"var(--b)"}}>Отмена</button>
+                  <button className="fa" onClick={saveBio} style={{flex:2}}>Сохранить</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:11,color:"var(--ink3)",fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",marginBottom:10}}>Статус пары</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+              {PAIR_STATUSES.map(s=>(
+                <button key={s} onClick={()=>saveStatus(s,"")} style={{
+                  padding:"6px 12px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"var(--b)",
+                  background:status===s&&!customStatus?"var(--r)":"rgba(255,255,255,.05)",
+                  border:status===s&&!customStatus?"none":"1px solid rgba(255,255,255,.08)",
+                  color:status===s&&!customStatus?"#fff":"var(--ink3)",
+                }}>{s}</button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input className="fi inp-raw" placeholder="Свой статус…" value={customStatus}
+                onChange={e=>setCustomStatus(e.target.value)}
+                onBlur={()=>customStatus&&saveStatus(status,customStatus)}
+                style={{flex:1}}/>
+            </div>
+          </div>
+
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:11,color:"var(--ink3)",fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",marginBottom:10}}>Обложка профиля</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {COVER_GRADIENTS.map(g=>(
+                <div key={g.id} onClick={()=>saveCover(g.id)} style={{
+                  width:40,height:40,borderRadius:10,background:g.css,cursor:"pointer",
+                  border:`2px solid ${cover===g.id?"rgba(255,255,255,.8)":"transparent"}`,
+                  transform:cover===g.id?"scale(1.15)":"scale(1)",
+                  transition:"all .2s",
+                }} title={g.name}/>
+              ))}
+            </div>
+          </div>
+
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:11,color:"var(--ink3)",fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",marginBottom:10}}>Тема</div>
+            <div style={{display:"flex",gap:8}}>
+              {[
+                {id:"midnight",c:"#c14268",label:"🌙"},
+                {id:"blush",c:"#e8748a",label:"🌸"},
+                {id:"golden",c:"#b8924a",label:"✨"},
+                {id:"ocean",c:"#4ab8c1",label:"🌊"},
+              ].map(t=>(
+                <div key={t.id} onClick={()=>{applyTheme(t.id);db.set(`theme:${pid}`,t.id);}} title={t.label}
+                  style={{width:36,height:36,borderRadius:"50%",background:t.c,cursor:"pointer",
+                    border:`2px solid ${theme===t.id?"rgba(255,255,255,.8)":"transparent"}`,
+                    transform:theme===t.id?"scale(1.2)":"scale(1)",transition:"all .2s",
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:14
+                  }}>{t.label}</div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {[
+              {label:"Дней",value:days},
+              {label:"Недель",value:Math.floor(days/7)},
+              {label:"Месяцев",value:Math.floor(days/30)},
+            ].map(s=>(
+              <div key={s.label} style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"14px 8px",textAlign:"center"}}>
+                <div style={{fontFamily:"var(--d)",fontSize:24,fontWeight:700,color:"var(--r)"}}>{s.value}</div>
+                <div style={{fontSize:11,color:"var(--ink3)",marginTop:2}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -1623,6 +1741,7 @@ function GamesSec({pid, me, partner}){
     const newH=[entry,...history].slice(0,50);
     setHistory(newH);
     await db.set(`games:${pid}`,newH);
+    await notifyPartner(partner,`ответил(а) в игре 🎯`,"🎯");
     setMyAns("");
   };
 
@@ -1751,6 +1870,7 @@ function PhotoDaySec({pid, me, partner}){
         const b64=canvas.toDataURL("image/jpeg",0.7).split(",")[1];
         await db.set(`photo:${n(me)}:${today}`,{b64,ts:Date.now(),by:me});
         setMyPhoto({b64,ts:Date.now(),by:me});
+        await notifyPartner(partner,`добавил(а) фото дня 🌅`,"🌅");
       };
       img.src=reader.result;
     };
@@ -2164,6 +2284,116 @@ function Onboarding({onDone}){
   );
 }
 
+const PIANO_KEYS=[
+  {note:"A3",freq:220,emoji:"💕",color:"rgba(193,66,104,.6)"},
+  {note:"B3",freq:246.9,emoji:"🌹",color:"rgba(184,146,74,.6)"},
+  {note:"C4",freq:261.6,emoji:"✨",color:"rgba(193,66,104,.5)"},
+  {note:"D4",freq:293.7,emoji:"🌙",color:"rgba(74,184,193,.5)"},
+  {note:"E4",freq:329.6,emoji:"💫",color:"rgba(193,66,104,.6)"},
+  {note:"F4",freq:349.2,emoji:"🌸",color:"rgba(184,146,74,.5)"},
+  {note:"G4",freq:392,emoji:"💖",color:"rgba(74,184,193,.6)"},
+  {note:"A4",freq:440,emoji:"🦋",color:"rgba(193,66,104,.7)"},
+];
+function playPianoNote(freq){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const rev=ctx.createConvolver();
+    const buf=ctx.createBuffer(2,ctx.sampleRate*2,ctx.sampleRate);
+    for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<buf.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/buf.length,2.5);}
+    rev.buffer=buf;rev.connect(ctx.destination);
+    const osc=ctx.createOscillator();
+    const osc2=ctx.createOscillator();
+    const gain=ctx.createGain();
+    const gain2=ctx.createGain();
+    osc.type="triangle";osc.frequency.value=freq;
+    osc2.type="sine";osc2.frequency.value=freq*2;
+    gain.gain.setValueAtTime(0,ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.3,ctx.currentTime+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+2.5);
+    gain2.gain.setValueAtTime(0,ctx.currentTime);
+    gain2.gain.linearRampToValueAtTime(0.1,ctx.currentTime+0.01);
+    gain2.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+1.5);
+    osc.connect(gain);gain.connect(rev);gain.connect(ctx.destination);
+    osc2.connect(gain2);gain2.connect(ctx.destination);
+    osc.start();osc2.start();
+    osc.stop(ctx.currentTime+2.6);
+    osc2.stop(ctx.currentTime+1.6);
+    setTimeout(()=>ctx.close(),3000);
+  }catch(e){}
+}
+function LovePiano({onClose}){
+  const[active,setActive]=useState(null);
+  const[ripples,setRipples]=useState([]);
+  const press=(key)=>{
+    playPianoNote(key.freq);
+    setActive(key.note);
+    const id=Date.now();
+    setRipples(r=>[...r,{id,emoji:key.emoji}]);
+    setTimeout(()=>setRipples(r=>r.filter(x=>x.id!==id)),1000);
+    setTimeout(()=>setActive(null),150);
+    if(navigator.vibrate)navigator.vibrate(30);
+  };
+  return(
+    <div style={{
+      position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",
+      zIndex:950,background:"rgba(10,8,20,.97)",border:"1px solid rgba(193,66,104,.25)",
+      borderRadius:24,padding:"16px 12px",backdropFilter:"blur(40px)",
+      boxShadow:"0 8px 40px rgba(0,0,0,.8)",animation:"up .25s var(--e1) both",
+      minWidth:300,
+    }}>
+      {ripples.map(r=>(
+        <div key={r.id} style={{
+          position:"absolute",top:"-40px",left:`${20+Math.random()*60}%`,
+          fontSize:20,animation:"stickerFly .9s var(--e1) forwards",
+          pointerEvents:"none",
+        }}>{r.emoji}</div>
+      ))}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <span style={{fontSize:11,fontWeight:600,letterSpacing:".1em",color:"rgba(193,66,104,.7)",textTransform:"uppercase"}}>Love Piano 🎹</span>
+        <span onClick={onClose} style={{color:"var(--ink3)",cursor:"pointer",fontSize:14}}>✕</span>
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        {PIANO_KEYS.map(key=>(
+          <div key={key.note}
+            onMouseDown={()=>press(key)}
+            onTouchStart={e=>{e.preventDefault();press(key);}}
+            style={{
+              flex:1,height:72,borderRadius:12,cursor:"pointer",
+              background:active===key.note?key.color:"rgba(255,255,255,.06)",
+              border:`1px solid ${active===key.note?key.color.replace(".6",".9"):"rgba(255,255,255,.1)"}`,
+              display:"flex",alignItems:"flex-end",justifyContent:"center",
+              paddingBottom:8,fontSize:16,
+              transform:active===key.note?"scale(.95)":"scale(1)",
+              transition:"all .08s",
+              boxShadow:active===key.note?`0 0 16px ${key.color}`:"none",
+            }}>
+            {key.emoji}
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6,marginTop:10}}>
+        {[
+          {name:"Am",notes:[220,261.6,329.6],icon:"🌙"},
+          {name:"F",notes:[174.6,220,261.6],icon:"🌹"},
+          {name:"C",notes:[261.6,329.6,392],icon:"💕"},
+          {name:"G",notes:[196,246.9,293.7],icon:"✨"},
+        ].map(chord=>(
+          <button key={chord.name} onMouseDown={()=>chord.notes.forEach((f,i)=>setTimeout(()=>playPianoNote(f),i*30))}
+            onTouchStart={e=>{e.preventDefault();chord.notes.forEach((f,i)=>setTimeout(()=>playPianoNote(f),i*30));}}
+            style={{
+              flex:1,padding:"8px 4px",borderRadius:10,cursor:"pointer",fontFamily:"var(--b)",
+              background:"rgba(193,66,104,.1)",border:"1px solid rgba(193,66,104,.2)",
+              color:"var(--ink2)",fontSize:11,display:"flex",flexDirection:"column",alignItems:"center",gap:2
+            }}>
+            <span>{chord.icon}</span>
+            <span>{chord.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─── LANDING ─── */
 const SECS=[{id:"hero",l:"Главная"},{id:"today",l:"Сегодня"},{id:"profile",l:"Профиль"},{id:"achievements",l:"Награды"},{id:"mood",l:"Настроение"},{id:"bodymood",l:"Самочувствие"},{id:"qa",l:"Вопрос"},{id:"games",l:"Игры"},{id:"timer",l:"Счётчик"},{id:"planner",l:"Неделя"},{id:"shop",l:"Покупки"},{id:"calendar",l:"Даты"},{id:"moments",l:"Моменты"},{id:"photoday",l:"Фото дня"},{id:"dreams",l:"Мечты"},{id:"wishes",l:"Желания"},{id:"travel",l:"Путешествия"},{id:"map",l:"Места"},{id:"promises",l:"Обещания"},{id:"capsule",l:"Капсула"}];
 
@@ -2180,6 +2410,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
   const[myKiss,sMK]=useState(false);const[ptKiss,sPK]=useState(false);const[kissStart,sKS]=useState(null);const kTK=useRef(0);const[kToast,sKT]=useState(null);
   const[vibe,sVibe]=useState(false);const[vibeR,sVR]=useState(null);const lastVT=useRef(0);
   const[music,sMusic]=useState(false);
+  const[piano,sPiano]=useState(false);
   const[trackPicker,sTrackPicker]=useState(false);
   const[currentTrack,sCurrentTrack]=useState("1");
   const[surp,sSurp]=useState(false);const sFired=useRef(false);
@@ -2242,7 +2473,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
     scrollEl
   );
   const sendReact=async em=>{sReacts(false);const x=35+Math.random()*30,y=25+Math.random()*44;const id=++rid.current;sF(p=>[...p,{id,emoji:em,x:`${x}%`,y:`${y}%`}]);const s=await loadSt(me)||{};await saveSt(me,{...s,reaction:{emoji:em,x,y,ts:Date.now()}});};
-  const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();const msg={text,from:me,ts,vd,vdur,reactions:{}};sMsgs(p=>[...p,msg]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{...msg}});if(text&&text!=="🎤 Голосовое")notifyPartner(partner,`@${n(me)}: «${text.slice(0,60)}»`,"💬");};
+  const sendMsg=async(text,vd=null,vdur=null)=>{const ts=Date.now();const msg={text,from:me,ts,vd,vdur,reactions:{}};sMsgs(p=>[...p,msg]);const s=await loadSt(me)||{};await saveSt(me,{...s,msg:{...msg}});if(text&&text!=="🎤 Голосовое")await notifyPartner(partner,`написал(а) тебе 💬`,"💬");};
   const reactToMsg=async(ts,emoji)=>{const updated=msgs.map(m=>{if(m.ts!==ts)return m;const cur=m.reactions?.[emoji]||0;return{...m,reactions:{...m.reactions,[emoji]:cur>0?0:1}};});sMsgs(updated);await db.set(`chat:${pid}`,updated);};
   const startRec=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mime=["audio/webm","audio/mp4","audio/ogg"].find(t=>MediaRecorder.isTypeSupported(t))||"";const mr=new MediaRecorder(stream,mime?{mimeType:mime}:{});chunks.current=[];mr.ondataavailable=e=>chunks.current.push(e.data);mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks.current,mime?{type:mime}:{});if(blob.size>10){const dur=(Date.now()-recSt.current)/1000;const reader=new FileReader();reader.onloadend=async()=>{await sendMsg("🎤 Голосовое",reader.result.split(",")[1],dur);};reader.readAsDataURL(blob);}sRec(false);};mr.start();mrRef.current=mr;recSt.current=Date.now();sRec(true);setTimeout(()=>{if(mr.state==="recording")mr.stop();},30000);}catch(e){}};
   const stopRec=()=>{if(mrRef.current?.state==="recording")mrRef.current.stop();};
@@ -2271,7 +2502,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
       <div className="hr"/>
       <section id="today" ref={el=>sRefs.current.today=el}><TodaySec pid={pid} me={me} partner={partner}/></section>
       <div className="hr"/>
-      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} daysT={daysT} tgPhotoUrl={tgPhotoUrl} theme={theme} applyTheme={applyTheme} appTheme={appTheme} toggleAppTheme={toggleAppTheme}/></section>
+      <section id="profile" ref={el=>sRefs.current.profile=el}><ProfileSec pid={pid} me={me} partner={partner} connectedAt={connectedAt} tgPhotoUrl={tgPhotoUrl} theme={theme} applyTheme={applyTheme}/></section>
       <div className="hr"/>
       <section id="achievements" ref={el=>sRefs.current.achievements=el}><AchievementsSec pid={pid} me={me} partner={partner} connectedAt={connectedAt}/></section>
       <div className="hr"/>
@@ -2346,6 +2577,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
         <div className="rsep"/>
         <div className="rbtns">
           <div style={{display:"flex",alignItems:"center",gap:2}}><div className={`rb ${music?"on":""}`} onClick={()=>{toggleMusic();sTrackPicker(false);}} title="Музыка">{music?<MBars/>:TRACKS.find(t=>t.id===currentTrack)?.icon||"🎵"}</div><div className="rb" style={{width:22,height:22,fontSize:9}} onClick={()=>sTrackPicker(p=>!p)} title="Выбор трека">▾</div></div>
+          <div className={`rb ${piano?"on":""}`} onClick={()=>{sPiano(p=>!p);sReacts(false);sVibe(false);sChat(false);sTrackPicker(false);}} title="Love Piano">🎹</div>
           <div className={`rb ${vibe?"on":""}`} onClick={()=>{sVibe(p=>!p);sReacts(false);sChat(false);}} title="Вибрация">📳</div>
           <div className={`rb ${reacts?"on":""}`} onClick={()=>{sReacts(p=>!p);sVibe(false);sChat(false);}} title="Реакции">🎯</div>
           <div className={`rb ${myKiss?"kiss-on":""}`} onMouseDown={startKiss} onMouseUp={endKiss} onTouchStart={startKiss} onTouchEnd={endKiss} title="Поцелуй">💋</div>
@@ -2355,6 +2587,7 @@ function Landing({me,partner,surpriseMsg,connectedAt,tgPhotoUrl,onDisc}){
         <span className="rib-exit" onClick={onDisc}>Выйти</span>
       </div>
       {trackPicker&&(<div className="track-picker"><div style={{fontSize:10,fontWeight:600,letterSpacing:".1em",color:"rgba(193,66,104,.6)",textTransform:"uppercase",padding:"0 4px 6px"}}>Атмосфера</div>{TRACKS.map(t=>(<div key={t.id} className={`track-item ${currentTrack===t.id?"on":""}`} onClick={()=>switchTrack(t.id)}><span className="track-icon">{t.icon}</span><span className="track-name">{t.name}</span>{currentTrack===t.id&&<span className="track-active"/>}</div>))}</div>)}
+      {piano&&<LovePiano onClose={()=>sPiano(false)}/>}
     </div>
   );
 }
