@@ -1356,13 +1356,12 @@ function ProfileSec({pid,me,partner,connectedAt,tgPhotoUrl,theme,applyTheme}){
     <div className="sec" id="profile">
       <div className="sec-in" style={{padding:0}}>
         <div style={{
-          height:160,background:cv.css,position:"relative",
-          borderRadius:"0 0 32px 32px",marginBottom:60,
-          overflow:"hidden",
+          height:140,background:cv.css,position:"relative",
+          borderRadius:"0 0 28px 28px",marginBottom:56,
         }}>
           <div style={{position:"absolute",inset:0,opacity:.15,backgroundImage:"radial-gradient(circle,rgba(255,255,255,.4) 1px,transparent 1px)",backgroundSize:"20px 20px"}}/>
 
-          <div style={{position:"absolute",bottom:-44,left:"50%",transform:"translateX(-50%)",display:"flex",gap:0,alignItems:"flex-end"}}>
+          <div style={{position:"absolute",bottom:-40,left:"50%",transform:"translateX(-50%)",display:"flex",gap:0,alignItems:"flex-end"}}>
             <div style={{width:80,height:80,borderRadius:"50%",border:"3px solid var(--c0)",background:"var(--c2)",overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,.4)",zIndex:2}}>
               {tgPhotoUrl
                 ?<img src={tgPhotoUrl} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
@@ -1860,7 +1859,7 @@ function PhotoDaySec({pid, me, partner}){
   const[myPhoto,setMyPhoto]=useState(null);
   const[ptPhoto,setPtPhoto]=useState(null);
   const[loading,setLoading]=useState(true);
-  const fileRef=useRef(null);
+  const[uploading,setUploading]=useState(false);
 
   useEffect(()=>{
     if(!pid)return;
@@ -1879,25 +1878,39 @@ function PhotoDaySec({pid, me, partner}){
   const upload=async(e)=>{
     const file=e.target.files?.[0];
     if(!file)return;
+    setUploading(true);
     const reader=new FileReader();
     reader.onloadend=async()=>{
       const img=new Image();
       img.onload=async()=>{
         const canvas=document.createElement("canvas");
         const MAX=400;
-        const ratio=Math.min(MAX/img.width,MAX/img.height);
-        canvas.width=img.width*ratio;canvas.height=img.height*ratio;
+        const ratio=Math.min(MAX/img.width,MAX/img.height,1);
+        canvas.width=img.width*ratio;
+        canvas.height=img.height*ratio;
         const ctx=canvas.getContext("2d");
         ctx.drawImage(img,0,0,canvas.width,canvas.height);
         const b64=canvas.toDataURL("image/jpeg",0.5).split(",")[1];
-        await db.set(`photo:${n(me)}:${today}`,{b64,ts:Date.now(),by:me});
-        setMyPhoto({b64,ts:Date.now(),by:me});
+        const data={b64,ts:Date.now(),by:me};
+        await db.set(`photo:${n(me)}:${today}`,data);
+        setMyPhoto(data);
         await notifyPartner(partner,`добавил(а) фото дня 🌅`,"🌅");
+        setUploading(false);
       };
+      img.onerror=()=>setUploading(false);
       img.src=reader.result;
     };
+    reader.onerror=()=>setUploading(false);
     reader.readAsDataURL(file);
   };
+
+  if(loading)return(
+    <div className="sec" id="photoday"><div className="sec-in">
+      <span className="brow">Фото дня</span>
+      <h2 className="sh">Покажи <em>свой день</em></h2>
+      <SkeletonCards count={2} height={160}/>
+    </div></div>
+  );
 
   return(
     <div className="sec" id="photoday">
@@ -1906,52 +1919,70 @@ function PhotoDaySec({pid, me, partner}){
         <h2 className="sh">Покажи <em>свой день</em></h2>
         <p className="sp">Каждый день одно фото — видите моменты жизни друг друга.</p>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center"}}>@{n(me)}</div>
-            {myPhoto?.b64?(
-              <div style={{position:"relative"}}>
-                <img src={`data:image/jpeg;base64,${myPhoto.b64}`}
-                  style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:16,border:"2px solid rgba(193,66,104,.3)"}}/>
-                <button onClick={()=>fileRef.current?.click()} style={{
-                  position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.6)",
-                  border:"none",borderRadius:999,padding:"4px 8px",color:"#fff",
-                  fontSize:11,cursor:"pointer"
-                }}>Изменить</button>
-              </div>
-            ):(
-              <div onClick={()=>fileRef.current?.click()} style={{
-                aspectRatio:"1",border:"2px dashed rgba(193,66,104,.3)",borderRadius:16,
-                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                gap:8,cursor:"pointer",background:"rgba(193,66,104,.04)",
-              }}>
-                <span style={{fontSize:32}}>📸</span>
-                <span style={{fontSize:12,color:"var(--ink3)"}}>Добавить фото</span>
-              </div>
-            )}
-            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={upload}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center",marginBottom:2}}>@{n(me)}</div>
+            <label style={{display:"block",cursor:"pointer"}}>
+              {myPhoto?.b64?(
+                <div style={{position:"relative"}}>
+                  <img
+                    src={`data:image/jpeg;base64,${myPhoto.b64}`}
+                    style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:16,border:"2px solid rgba(193,66,104,.3)",display:"block"}}
+                  />
+                  <div style={{
+                    position:"absolute",inset:0,borderRadius:16,
+                    background:"rgba(0,0,0,.0)",display:"flex",
+                    alignItems:"flex-end",justifyContent:"center",
+                    paddingBottom:8,
+                  }}>
+                    <span style={{background:"rgba(0,0,0,.5)",color:"#fff",fontSize:10,padding:"3px 8px",borderRadius:999}}>Изменить</span>
+                  </div>
+                </div>
+              ):(
+                <div style={{
+                  aspectRatio:"1",border:"2px dashed rgba(193,66,104,.3)",borderRadius:16,
+                  display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                  gap:8,background:"rgba(193,66,104,.04)",
+                }}>
+                  {uploading
+                    ?<div style={{fontSize:24}}>⏳</div>
+                    :<><span style={{fontSize:32}}>📸</span><span style={{fontSize:11,color:"var(--ink3)"}}>Добавить фото</span></>
+                  }
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{display:"none"}}
+                onChange={upload}
+                disabled={uploading}
+              />
+            </label>
           </div>
 
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center"}}>@{n(partner)}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center",marginBottom:2}}>@{n(partner)}</div>
             {ptPhoto?.b64?(
-              <img src={`data:image/jpeg;base64,${ptPhoto.b64}`}
-                style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:16,border:"2px solid rgba(255,255,255,.1)"}}/>
+              <img
+                src={`data:image/jpeg;base64,${ptPhoto.b64}`}
+                style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:16,border:"2px solid rgba(255,255,255,.1)",display:"block"}}
+              />
             ):(
               <div style={{
                 aspectRatio:"1",border:"2px dashed rgba(255,255,255,.08)",borderRadius:16,
-                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                gap:8,background:"rgba(255,255,255,.02)",
+                display:"flex",flexDirection:"column",alignItems:"center",
+                justifyContent:"center",gap:8,background:"rgba(255,255,255,.02)",
               }}>
                 <span style={{fontSize:32}}>🌅</span>
-                <span style={{fontSize:12,color:"var(--ink3)"}}>Ждём фото…</span>
+                <span style={{fontSize:11,color:"var(--ink3)"}}>Ждём фото…</span>
               </div>
             )}
           </div>
         </div>
 
         <div style={{fontSize:11,color:"var(--ink3)",textAlign:"center"}}>
-          Фото обновляются каждый день
+          Фото обновляются каждый день 🌅
         </div>
       </div>
     </div>
@@ -2361,7 +2392,7 @@ function LovePiano({onClose}){
       zIndex:950,background:"rgba(10,8,20,.97)",border:"1px solid rgba(193,66,104,.25)",
       borderRadius:24,padding:"16px 12px",backdropFilter:"blur(40px)",
       boxShadow:"0 8px 40px rgba(0,0,0,.8)",animation:"up .25s var(--e1) both",
-      minWidth:300,
+      minWidth:260,maxWidth:"90vw",
     }}>
       {ripples.map(r=>(
         <div key={r.id} style={{
@@ -2374,21 +2405,39 @@ function LovePiano({onClose}){
         <span style={{fontSize:11,fontWeight:600,letterSpacing:".1em",color:"rgba(193,66,104,.7)",textTransform:"uppercase"}}>Love Piano 🎹</span>
         <span onClick={onClose} style={{color:"var(--ink3)",cursor:"pointer",fontSize:14}}>✕</span>
       </div>
-      <div style={{display:"flex",gap:4}}>
-        {PIANO_KEYS.map(key=>(
-          <div key={key.note}
-            className="piano-key"
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:8}}>
+        {PIANO_KEYS.slice(0,4).map(key=>(
+          <div key={key.note} className="piano-key"
             onMouseDown={()=>press(key)}
-            onTouchStart={()=>press(key)}
+            onTouchStart={e=>{press(key);}}
             style={{
-              flex:1,height:72,borderRadius:12,cursor:"pointer",
+              height:56,borderRadius:12,cursor:"pointer",
               background:active===key.note?key.color:"rgba(255,255,255,.06)",
-              border:`1px solid ${active===key.note?key.color.replace(".6",".9"):"rgba(255,255,255,.1)"}`,
-              display:"flex",alignItems:"flex-end",justifyContent:"center",
-              paddingBottom:8,fontSize:16,
-              transform:active===key.note?"scale(.95)":"scale(1)",
+              border:`1px solid ${active===key.note?key.color:"rgba(255,255,255,.1)"}`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:22,
+              transform:active===key.note?"scale(.92)":"scale(1)",
               transition:"all .08s",
-              boxShadow:active===key.note?`0 0 16px ${key.color}`:"none",
+              boxShadow:active===key.note?`0 0 14px ${key.color}`:"none",
+            }}>
+            {key.emoji}
+          </div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+        {PIANO_KEYS.slice(4,8).map(key=>(
+          <div key={key.note} className="piano-key"
+            onMouseDown={()=>press(key)}
+            onTouchStart={e=>{press(key);}}
+            style={{
+              height:56,borderRadius:12,cursor:"pointer",
+              background:active===key.note?key.color:"rgba(255,255,255,.06)",
+              border:`1px solid ${active===key.note?key.color:"rgba(255,255,255,.1)"}`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:22,
+              transform:active===key.note?"scale(.92)":"scale(1)",
+              transition:"all .08s",
+              boxShadow:active===key.note?`0 0 14px ${key.color}`:"none",
             }}>
             {key.emoji}
           </div>
