@@ -2392,7 +2392,7 @@ function LovePiano({onClose}){
       zIndex:950,background:"rgba(10,8,20,.97)",border:"1px solid rgba(193,66,104,.25)",
       borderRadius:24,padding:"16px 12px",backdropFilter:"blur(40px)",
       boxShadow:"0 8px 40px rgba(0,0,0,.8)",animation:"up .25s var(--e1) both",
-      minWidth:260,maxWidth:"90vw",
+      width:"calc(100vw - 32px)",maxWidth:340,
     }}>
       {ripples.map(r=>(
         <div key={r.id} style={{
@@ -2405,17 +2405,17 @@ function LovePiano({onClose}){
         <span style={{fontSize:11,fontWeight:600,letterSpacing:".1em",color:"rgba(193,66,104,.7)",textTransform:"uppercase"}}>Love Piano 🎹</span>
         <span onClick={onClose} style={{color:"var(--ink3)",cursor:"pointer",fontSize:14}}>✕</span>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:8}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:8}}>
         {PIANO_KEYS.slice(0,4).map(key=>(
           <div key={key.note} className="piano-key"
             onMouseDown={()=>press(key)}
             onTouchStart={e=>{press(key);}}
             style={{
-              height:56,borderRadius:12,cursor:"pointer",
+              height:48,borderRadius:12,cursor:"pointer",
               background:active===key.note?key.color:"rgba(255,255,255,.06)",
               border:`1px solid ${active===key.note?key.color:"rgba(255,255,255,.1)"}`,
               display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:22,
+              fontSize:18,
               transform:active===key.note?"scale(.92)":"scale(1)",
               transition:"all .08s",
               boxShadow:active===key.note?`0 0 14px ${key.color}`:"none",
@@ -2424,17 +2424,17 @@ function LovePiano({onClose}){
           </div>
         ))}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:10}}>
         {PIANO_KEYS.slice(4,8).map(key=>(
           <div key={key.note} className="piano-key"
             onMouseDown={()=>press(key)}
             onTouchStart={e=>{press(key);}}
             style={{
-              height:56,borderRadius:12,cursor:"pointer",
+              height:48,borderRadius:12,cursor:"pointer",
               background:active===key.note?key.color:"rgba(255,255,255,.06)",
               border:`1px solid ${active===key.note?key.color:"rgba(255,255,255,.1)"}`,
               display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:22,
+              fontSize:18,
               transform:active===key.note?"scale(.92)":"scale(1)",
               transition:"all .08s",
               boxShadow:active===key.note?`0 0 14px ${key.color}`:"none",
@@ -2443,7 +2443,7 @@ function LovePiano({onClose}){
           </div>
         ))}
       </div>
-      <div style={{display:"flex",gap:6,marginTop:10}}>
+      <div style={{display:"flex",gap:4,marginTop:10}}>
         {[
           {name:"Am",notes:[220,261.6,329.6],icon:"🌙"},
           {name:"F",notes:[174.6,220,261.6],icon:"🌹"},
@@ -2453,9 +2453,9 @@ function LovePiano({onClose}){
           <button key={chord.name} onMouseDown={()=>chord.notes.forEach((f,i)=>setTimeout(()=>playPianoNote(f),i*30))}
             onTouchStart={()=>chord.notes.forEach((f,i)=>setTimeout(()=>playPianoNote(f),i*30))}
             style={{
-              flex:1,padding:"8px 4px",borderRadius:10,cursor:"pointer",fontFamily:"var(--b)",
+              flex:1,padding:"6px 2px",borderRadius:10,cursor:"pointer",fontFamily:"var(--b)",
               background:"rgba(193,66,104,.1)",border:"1px solid rgba(193,66,104,.2)",
-              color:"var(--ink2)",fontSize:11,display:"flex",flexDirection:"column",alignItems:"center",gap:2
+              color:"var(--ink2)",fontSize:10,display:"flex",flexDirection:"column",alignItems:"center",gap:2
             }}>
             <span>{chord.icon}</span>
             <span>{chord.name}</span>
